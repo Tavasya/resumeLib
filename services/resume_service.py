@@ -232,6 +232,7 @@ class ResumeService:
         query: Optional[str] = None,
         seniority: Optional[str] = None,
         skills: Optional[List[str]] = None,
+        school: Optional[str] = None,
         min_experience: Optional[int] = None,
         max_experience: Optional[int] = None,
         page: int = 1,
@@ -275,6 +276,20 @@ class ResumeService:
                         filtered_results.append(resume)
                 all_results = filtered_results
 
+            # Filter by school (search in education.institution field)
+            if school:
+                filtered_results = []
+                school_lower = school.lower()
+                for resume in all_results:
+                    education = resume.get("education", [])
+                    # Check if any institution matches the school search
+                    if education and any(
+                        school_lower in edu.get("institution", "").lower()
+                        for edu in education if isinstance(edu, dict)
+                    ):
+                        filtered_results.append(resume)
+                all_results = filtered_results
+
             # Pagination in Python
             total = len(all_results)
             offset = (page - 1) * limit
@@ -295,6 +310,7 @@ class ResumeService:
                     "query": query,
                     "seniority": seniority,
                     "skills": skills,
+                    "school": school,
                     "min_experience": min_experience,
                     "max_experience": max_experience
                 }
@@ -305,7 +321,7 @@ class ResumeService:
             return {
                 "results": [],
                 "pagination": {"page": page, "limit": limit, "total": 0, "total_pages": 0},
-                "filters_applied": {"query": query, "seniority": seniority, "skills": skills, "min_experience": min_experience, "max_experience": max_experience},
+                "filters_applied": {"query": query, "seniority": seniority, "skills": skills, "school": school, "min_experience": min_experience, "max_experience": max_experience},
                 "error": str(e)
             }
 

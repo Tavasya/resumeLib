@@ -17,6 +17,7 @@ async def search_resumes(
     q: Optional[str] = Query(None, description="Search query (searches across all resume text)"),
     seniority: Optional[str] = Query(None, description="Filter by seniority level (intern, junior, mid-level, senior, staff, principal, etc.)"),
     skills: Optional[str] = Query(None, description="Comma-separated list of skills (e.g., 'python,react,aws')"),
+    school: Optional[str] = Query(None, description="Filter by school/university (e.g., 'MIT', 'Stanford', 'Berkeley')"),
     min_experience: Optional[int] = Query(None, ge=0, description="Minimum years of experience"),
     max_experience: Optional[int] = Query(None, ge=0, description="Maximum years of experience"),
     page: int = Query(1, ge=1, description="Page number (starts at 1)"),
@@ -30,6 +31,8 @@ async def search_resumes(
     - /api/resumes/search?q=software+engineer&seniority=senior&skills=python,react
     - /api/resumes/search?seniority=intern&min_experience=0&max_experience=2
     - /api/resumes/search?q=machine+learning&skills=tensorflow,pytorch&page=2
+    - /api/resumes/search?school=stanford&seniority=intern
+    - /api/resumes/search?school=MIT&skills=python
 
     The search uses full-text search on the raw resume text, so it will find:
     - Company names mentioned anywhere (current or past positions)
@@ -47,6 +50,7 @@ async def search_resumes(
         query=q,
         seniority=seniority,
         skills=skills_list,
+        school=school,
         min_experience=min_experience,
         max_experience=max_experience,
         page=page,
