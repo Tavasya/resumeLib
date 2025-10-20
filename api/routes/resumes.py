@@ -7,6 +7,7 @@ from typing import Optional, List
 from uuid import UUID
 
 from services.resume_service import resume_service
+from services.project_service import project_service
 from models.resume import ResumeInDB
 
 router = APIRouter()
@@ -60,6 +61,32 @@ async def search_resumes(
     # Convert ResumeInDB objects to dicts for JSON serialization
     result["results"] = [resume.model_dump() for resume in result["results"]]
 
+    return result
+
+
+@router.get("/projects")
+async def get_projects_with_links(
+    page: int = Query(1, ge=1, description="Page number (starts at 1)"),
+    limit: int = Query(20, ge=1, le=100, description="Projects per page (max 100)")
+):
+    """
+    Get all projects that have links (GitHub, websites, etc.) with pagination
+
+    Only returns projects with a non-empty URL field.
+    Each project includes the resume owner's information for context.
+
+    Example queries:
+    - /api/resumes/projects?page=1&limit=20
+    - /api/resumes/projects?page=2&limit=50
+
+    Returns:
+        Paginated list of projects with links, including owner information
+    """
+    print(f"DEBUG: Received request with page={page}, limit={limit}")
+    result = project_service.get_projects_with_links(page=page, limit=limit)
+    print(f"DEBUG: Service returned: {type(result)}")
+    print(f"DEBUG: Result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
+    print(f"DEBUG: Number of projects: {len(result.get('projects', [])) if isinstance(result, dict) else 'N/A'}")
     return result
 
 
