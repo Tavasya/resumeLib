@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: str
 
+    # Clerk Authentication
+    CLERK_PUBLISHABLE_KEY: str
+    CLERK_SECRET_KEY: str
+    CLERK_WEBHOOK_SECRET: str
+
     # Application
     APP_NAME: str = "Resume Library"
     ENVIRONMENT: str = "development"
