@@ -27,19 +27,8 @@ async def search_resumes(
     """
     Advanced search for resumes with multiple filters
 
-    Example queries:
-    - /api/resumes/search?q=google+intern
-    - /api/resumes/search?q=software+engineer&seniority=senior&skills=python,react
-    - /api/resumes/search?seniority=intern&min_experience=0&max_experience=2
-    - /api/resumes/search?q=machine+learning&skills=tensorflow,pytorch&page=2
-    - /api/resumes/search?school=stanford&seniority=intern
-    - /api/resumes/search?school=MIT&skills=python
-
-    The search uses full-text search on the raw resume text, so it will find:
-    - Company names mentioned anywhere (current or past positions)
-    - Keywords in job descriptions
-    - Project descriptions and technologies
-    - Any text content in the resume
+    Public endpoint - no authentication required
+    Subscription status is fetched separately by frontend
     """
     # Parse skills from comma-separated string
     skills_list = None
@@ -72,52 +61,36 @@ async def get_projects_with_links(
     """
     Get all projects that have links (GitHub, websites, etc.) with pagination
 
-    Only returns projects with a non-empty URL field.
-    Each project includes the resume owner's information for context.
-
-    Example queries:
-    - /api/resumes/projects?page=1&limit=20
-    - /api/resumes/projects?page=2&limit=50
-
-    Returns:
-        Paginated list of projects with links, including owner information
+    Public endpoint - no authentication required
     """
-    print(f"DEBUG: Received request with page={page}, limit={limit}")
     result = project_service.get_projects_with_links(page=page, limit=limit)
-    print(f"DEBUG: Service returned: {type(result)}")
-    print(f"DEBUG: Result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
-    print(f"DEBUG: Number of projects: {len(result.get('projects', [])) if isinstance(result, dict) else 'N/A'}")
     return result
 
 
-@router.get("/{resume_id}", response_model=ResumeInDB)
+@router.get("/{resume_id}")
 async def get_resume(resume_id: UUID):
     """
     Get a single resume by ID
 
-    Args:
-        resume_id: UUID of the resume
-
-    Returns:
-        Resume object with all fields
+    Public endpoint - no authentication required
     """
     resume = resume_service.get_resume_by_id(resume_id)
 
     if not resume:
         raise HTTPException(status_code=404, detail=f"Resume with ID {resume_id} not found")
 
-    return resume
+    return {"resume": resume.model_dump()}
 
 
 @router.get("/")
 async def list_resumes(
     limit: int = Query(20, ge=1, le=100, description="Maximum number of resumes to return"),
-    offset: int = Query(0, ge=0, description="Number of resumes to skip"),
+    offset: int = Query(0, ge=0, description="Number of resumes to skip")
 ):
     """
     List all resumes with pagination
 
-    For searching with filters, use /search endpoint instead
+    Public endpoint - no authentication required
     """
     resumes = resume_service.list_resumes(limit=limit, offset=offset)
 

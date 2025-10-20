@@ -14,6 +14,7 @@ distro==1.9.0
 dnspython==2.8.0
 email-validator==2.3.0
 fastapi==0.119.0
+fastapi_clerk_auth==0.0.7
 google-api-core==2.26.0
 google-api-python-client==2.185.0
 google-auth==2.41.1
@@ -57,6 +58,7 @@ soupsieve==2.8
 starlette==0.48.0
 storage3==2.22.0
 StrEnum==0.4.15
+stripe==13.0.1
 supabase==2.22.0
 supabase-auth==2.22.0
 supabase-functions==2.22.0
