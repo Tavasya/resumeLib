@@ -39,9 +39,11 @@ async def health():
     }
 
 
-# Import and include routers (will be added later)
-# from api.routes import resumes, scraper
-# app.include_router(resumes.router, prefix="/api/resumes", tags=["resumes"])
+# Import and include routers
+from api.routes import resumes
+app.include_router(resumes.router, prefix="/api/resumes", tags=["resumes"])
+# Scraper routes will be added later
+# from api.routes import scraper
 # app.include_router(scraper.router, prefix="/api/scraper", tags=["scraper"])
 
 

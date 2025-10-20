@@ -195,7 +195,7 @@ class ResumeService:
 
     def search_resumes(self, search_query: str, limit: int = 50) -> List[ResumeInDB]:
         """
-        Search resumes by text (searches name, title, skills, raw_text)
+        Simple search resumes by text (searches name, title, skills, raw_text)
 
         Args:
             search_query: Text to search for
@@ -226,6 +226,88 @@ class ResumeService:
         except Exception as e:
             print(f"Error searching resumes: {e}")
             return []
+
+    def advanced_search(
+        self,
+        query: Optional[str] = None,
+        seniority: Optional[str] = None,
+        skills: Optional[List[str]] = None,
+        min_experience: Optional[int] = None,
+        max_experience: Optional[int] = None,
+        page: int = 1,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Advanced search for resumes with filters
+        """
+        try:
+            # Start with all resumes
+            db_query = supabase.table(self.table).select("*")
+
+            # Full-text search using ilike on raw_text
+            if query:
+                db_query = db_query.ilike("raw_text", f"%{query}%")
+
+            # Filter by seniority
+            if seniority:
+                db_query = db_query.eq("seniority", seniority.lower())
+
+            # Filter by experience range
+            if min_experience is not None:
+                db_query = db_query.gte("years_of_experience", min_experience)
+            if max_experience is not None:
+                db_query = db_query.lte("years_of_experience", max_experience)
+
+            # Execute query
+            response = db_query.execute()
+            all_results = response.data if response.data else []
+
+            # Filter by skills in Python (case-insensitive matching)
+            if skills:
+                filtered_results = []
+                for resume in all_results:
+                    resume_skills = resume.get("skills", [])
+                    # Convert both search skills and resume skills to lowercase for comparison
+                    resume_skills_lower = [s.lower() for s in resume_skills] if resume_skills else []
+                    search_skills_lower = [s.lower() for s in skills]
+                    # Check if any of the search skills match
+                    if any(skill in resume_skills_lower for skill in search_skills_lower):
+                        filtered_results.append(resume)
+                all_results = filtered_results
+
+            # Pagination in Python
+            total = len(all_results)
+            offset = (page - 1) * limit
+            paginated_results = all_results[offset:offset + limit]
+
+            # Convert to ResumeInDB objects
+            results = [ResumeInDB(**resume) for resume in paginated_results]
+
+            return {
+                "results": results,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "total_pages": (total + limit - 1) // limit if total > 0 else 0
+                },
+                "filters_applied": {
+                    "query": query,
+                    "seniority": seniority,
+                    "skills": skills,
+                    "min_experience": min_experience,
+                    "max_experience": max_experience
+                }
+            }
+
+        except Exception as e:
+            print(f"Error in advanced search: {e}")
+            return {
+                "results": [],
+                "pagination": {"page": page, "limit": limit, "total": 0, "total_pages": 0},
+                "filters_applied": {"query": query, "seniority": seniority, "skills": skills, "min_experience": min_experience, "max_experience": max_experience},
+                "error": str(e)
+            }
 
 
 # Global service instance
