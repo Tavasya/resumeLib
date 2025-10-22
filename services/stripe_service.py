@@ -104,7 +104,7 @@ class StripeService:
         """
         try:
             result = supabase.table("users")\
-                .select("subscription_tier, subscription_status, subscription_end_date")\
+                .select("subscription_tier, subscription_status, subscription_end_date, user_resume_url")\
                 .eq("clerk_user_id", clerk_user_id)\
                 .single()\
                 .execute()
@@ -116,7 +116,8 @@ class StripeService:
                 "tier": result.data.get("subscription_tier", "free"),
                 "status": result.data.get("subscription_status", "active"),
                 "end_date": result.data.get("subscription_end_date"),
-                "is_pro": result.data.get("subscription_tier") == "pro"
+                "is_pro": result.data.get("subscription_tier") == "pro",
+                "user_resume_url": result.data.get("user_resume_url")
             }
 
         except Exception as e:

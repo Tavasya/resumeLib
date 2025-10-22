@@ -4,7 +4,7 @@ Handles user resume uploads and comparisons with database resumes
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Request, Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 import tempfile
 import os
@@ -30,10 +30,22 @@ class UploadResponse(BaseModel):
     file_url: Optional[str] = None
 
 
+class WhatToWriteInstead(BaseModel):
+    """Pair of original text and improved version"""
+    original: str
+    improved: str
+
+
 class CompareResponse(BaseModel):
     """Response for resume comparison"""
     success: bool
-    analysis: Optional[str] = None
+    overall_match_score: Optional[int] = None
+    user_resume_ats_score: Optional[int] = None
+    db_resume_ats_score: Optional[int] = None
+    what_to_write_instead: Optional[List[WhatToWriteInstead]] = None
+    whats_working: Optional[List[str]] = None
+    what_needs_work: Optional[List[str]] = None
+    next_steps: Optional[List[str]] = None
     db_resume_name: Optional[str] = None
     error: Optional[str] = None
 
@@ -195,9 +207,25 @@ async def compare_user_resume(
                 error=result.get("error", "Failed to compare resumes")
             )
 
+        analysis_data = result.get("analysis", {})
+
+        # Convert what_to_write_instead to proper model objects
+        what_to_write_instead = []
+        for item in analysis_data.get("what_to_write_instead", []):
+            what_to_write_instead.append(WhatToWriteInstead(
+                original=item.get("original", ""),
+                improved=item.get("improved", "")
+            ))
+
         return CompareResponse(
             success=True,
-            analysis=result.get("analysis"),
+            overall_match_score=analysis_data.get("overall_match_score"),
+            user_resume_ats_score=analysis_data.get("user_resume_ats_score"),
+            db_resume_ats_score=analysis_data.get("db_resume_ats_score"),
+            what_to_write_instead=what_to_write_instead,
+            whats_working=analysis_data.get("whats_working", []),
+            what_needs_work=analysis_data.get("what_needs_work", []),
+            next_steps=analysis_data.get("next_steps", []),
             db_resume_name=result.get("db_resume_name")
         )
 

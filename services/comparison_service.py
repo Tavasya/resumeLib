@@ -2,6 +2,7 @@
 Comparison service for analyzing user resumes against database resumes
 """
 from typing import Optional, Dict, Any
+import json
 from openai import OpenAI
 from config import settings
 
@@ -45,7 +46,7 @@ class ComparisonService:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert resume analyst and career coach. Your job is to compare resumes and provide actionable feedback on why one resume is more effective than another."
+                        "content": "You are an expert resume analyst and ATS (Applicant Tracking System) specialist. Analyze resumes and return structured JSON feedback."
                     },
                     {
                         "role": "user",
@@ -53,14 +54,16 @@ class ComparisonService:
                     }
                 ],
                 temperature=0.7,
+                response_format={"type": "json_object"}  # Ensure JSON response
             )
 
-            # Get the analysis
-            analysis = response.choices[0].message.content
+            # Parse the JSON response
+            result = response.choices[0].message.content
+            analysis_data = json.loads(result)
 
             return {
                 "success": True,
-                "analysis": analysis,
+                "analysis": analysis_data,
                 "db_resume_name": db_resume_name
             }
 
@@ -88,7 +91,7 @@ class ComparisonService:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""I need you to compare two resumes and explain why the reference resume is more effective.
+        prompt = f"""Compare these two resumes and provide a structured analysis. The reference resume (by {db_resume_name}) is our curated high-quality example. The user's resume needs improvement.
 
 **Reference Resume (by {db_resume_name}):**
 ```
@@ -100,22 +103,40 @@ class ComparisonService:
 {user_resume_text}
 ```
 
-Please analyze both resumes and provide a detailed comparison covering:
+Return ONLY valid JSON with this EXACT structure:
 
-1. **Overall Structure & Formatting**: How does the reference resume's structure make it more readable and impactful?
+{{
+  "overall_match_score": 75,
+  "user_resume_ats_score": 65,
+  "db_resume_ats_score": 95,
+  "what_to_write_instead": [
+    {{"original": "Responsible for managing projects", "improved": "Led 5+ cross-functional teams to deliver projects 20% ahead of schedule"}},
+    {{"original": "Worked with customers", "improved": "Resolved 100+ customer issues weekly, maintaining 98% satisfaction rate"}}
+  ],
+  "whats_working": [
+    "Clear education section with relevant coursework",
+    "Consistent formatting and easy-to-read layout"
+  ],
+  "what_needs_work": [
+    "Lack of quantifiable achievements and metrics",
+    "Generic job descriptions without specific impact"
+  ],
+  "next_steps": [
+    "Add metrics to each bullet point (percentages, numbers, timeframes)",
+    "Replace passive language with strong action verbs and results"
+  ]
+}}
 
-2. **Content Quality**:
-   - How are accomplishments described differently?
-   - What makes the reference resume's descriptions more compelling?
-   - Are there specific metrics or results highlighted?
+Guidelines:
+- overall_match_score: 0-100 rating of how well the user's resume compares to the reference (holistic quality assessment)
+- user_resume_ats_score: 0-100% ATS compatibility score for user's resume
+- db_resume_ats_score: 0-100% ATS compatibility score for reference resume
+- what_to_write_instead: Provide 2 examples of weak text from user's resume and strong alternatives
+- whats_working: 2 things the user is doing right
+- what_needs_work: 2 critical areas for improvement
+- next_steps: 2 actionable next steps to improve the resume
 
-3. **Key Strengths of Reference Resume**: What specific elements make this resume stand out?
-
-4. **Areas Where User's Resume Falls Short**: Be specific about what's missing or could be improved.
-
-5. **Actionable Recommendations**: Give 3-5 concrete suggestions for how the user can improve their resume based on what works in the reference resume.
-
-Please be constructive, specific, and focus on helping the user understand what makes an effective resume."""
+Be specific, constructive, and focus on actionable improvements."""
 
         return prompt
 
