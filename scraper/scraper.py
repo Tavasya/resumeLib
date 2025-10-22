@@ -205,9 +205,9 @@ class ResumeScraper:
                 # Extract latest experience info (most recent job)
                 latest_exp = self._extract_latest_experience(llm_data.get("experience", []))
 
-                # Validate: Does latest experience match what we searched for?
+                # Validate: Does latest experience have a similar job title?
                 if not self._matches_search_criteria(latest_exp, file_info["metadata"]):
-                    print(f"  ⊘ Latest experience doesn't match search criteria (searched for {file_info['metadata']['company']} {file_info['metadata']['seniority']}, got {latest_exp.get('company')} {latest_exp.get('seniority')}), skipping")
+                    print(f"  ⊘ Job title doesn't match (searched for '{file_info['metadata']['job_title']}', got '{latest_exp.get('title')}'), skipping")
                     return
 
                 # Create ResumeCreate object (use Supabase URL as file_url)
@@ -302,47 +302,52 @@ class ResumeScraper:
 
     def _matches_search_criteria(self, latest_exp: Dict[str, Optional[str]], search_metadata: Dict) -> bool:
         """
-        Check if latest experience matches the search criteria
+        Check if latest experience has a similar job title to what was searched
+        (Ignores company and seniority - we save actual data from resume)
 
         Args:
             latest_exp: Latest experience data (title, company, seniority)
             search_metadata: Search query metadata (company, seniority, job_title)
 
         Returns:
-            True if matches, False otherwise
+            True if job title is similar, False otherwise
         """
-        # If no latest experience data, skip it
-        if not latest_exp.get("company") and not latest_exp.get("seniority"):
+        # If no latest experience title, skip it
+        latest_title = latest_exp.get("title")
+        if not latest_title:
             return False
 
-        # Check company match (case-insensitive)
-        search_company = search_metadata.get("company")
-        latest_company = latest_exp.get("company")
+        # Get searched job title
+        search_job_title = search_metadata.get("job_title")
+        if not search_job_title:
+            # If no job title in search (shouldn't happen), accept it
+            return True
 
-        if search_company and latest_company:
-            # Normalize for comparison
-            search_company_lower = search_company.lower().strip()
-            latest_company_lower = latest_company.lower().strip()
+        # Normalize for comparison
+        latest_title_lower = latest_title.lower().strip()
+        search_title_lower = search_job_title.lower().strip()
 
-            # Check if company names match (or one contains the other for variations)
-            company_match = (
-                search_company_lower in latest_company_lower or
-                latest_company_lower in search_company_lower
-            )
+        # Extract key terms from both titles (remove common words)
+        common_words = {"the", "a", "an", "and", "or", "of", "in", "at", "for", "to"}
 
-            if not company_match:
-                return False
+        def extract_keywords(title):
+            words = title.split()
+            return {w for w in words if w not in common_words and len(w) > 2}
 
-        # Check seniority match
-        search_seniority = search_metadata.get("seniority")
-        latest_seniority = latest_exp.get("seniority")
+        search_keywords = extract_keywords(search_title_lower)
+        latest_keywords = extract_keywords(latest_title_lower)
 
-        if search_seniority and latest_seniority:
-            if search_seniority.lower() != latest_seniority.lower():
-                return False
+        # Check if there's overlap in keywords (e.g., "software" and "engineer")
+        overlap = search_keywords.intersection(latest_keywords)
 
-        # If we got here, it matches!
-        return True
+        # Accept if at least 50% of search keywords are in the actual title
+        if len(search_keywords) == 0:
+            return True
+
+        overlap_ratio = len(overlap) / len(search_keywords)
+
+        # Accept if 50%+ keywords match (e.g., searching "software engineer" matches "senior software engineer")
+        return overlap_ratio >= 0.5
 
     def _infer_seniority(self, title: str) -> Optional[str]:
         """
