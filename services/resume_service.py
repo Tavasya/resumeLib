@@ -241,6 +241,17 @@ class ResumeService:
         """
         Advanced search for resumes with filters
         """
+        # Pinned/featured resume IDs (always appear first)
+        PINNED_RESUME_IDS = [
+            "eacb4ca1-9092-407c-a0e2-dcc625df062b",
+            "33fab7b2-f58e-46a7-bfd7-dee9ecdd9a6f",
+            "ab47820b-8036-4942-b90d-a09fd20acdd4",
+            "9d79b9db-4112-4a05-bfcc-70be1acf79e4",
+            "a8b0ee8f-95f4-427f-ad2f-2d0fdbff9895",
+            "ecd4db63-cce5-48ce-be03-08b65fa48b11"
+            
+        ]
+
         try:
             # Start with all resumes
             db_query = supabase.table(self.table).select("*")
@@ -258,6 +269,9 @@ class ResumeService:
                 db_query = db_query.gte("years_of_experience", min_experience)
             if max_experience is not None:
                 db_query = db_query.lte("years_of_experience", max_experience)
+
+            # Order by newest first
+            db_query = db_query.order("created_at", desc=True)
 
             # Execute query
             response = db_query.execute()
@@ -289,6 +303,22 @@ class ResumeService:
                     ):
                         filtered_results.append(resume)
                 all_results = filtered_results
+
+            # Separate pinned resumes from regular results
+            pinned_resumes = []
+            regular_resumes = []
+
+            for resume in all_results:
+                if resume.get("id") in PINNED_RESUME_IDS:
+                    pinned_resumes.append(resume)
+                else:
+                    regular_resumes.append(resume)
+
+            # Sort pinned resumes in the order they appear in PINNED_RESUME_IDS
+            pinned_resumes.sort(key=lambda r: PINNED_RESUME_IDS.index(r.get("id")))
+
+            # Combine: pinned first, then regular
+            all_results = pinned_resumes + regular_resumes
 
             # Pagination in Python
             total = len(all_results)
