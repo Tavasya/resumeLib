@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, status
 from svix.webhooks import Webhook, WebhookVerificationError
 from config import settings, supabase
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -91,6 +92,19 @@ async def handle_user_created(data: dict):
         logger.error(f"No email found for user {user_id}")
         return
 
+    # Convert millisecond timestamps to ISO format strings for Postgres
+    last_sign_in_at = data.get("last_sign_in_at")
+    if last_sign_in_at:
+        last_sign_in_at = datetime.fromtimestamp(last_sign_in_at / 1000).isoformat()
+
+    created_at = data.get("created_at")
+    if created_at:
+        created_at = datetime.fromtimestamp(created_at / 1000).isoformat()
+
+    updated_at = data.get("updated_at")
+    if updated_at:
+        updated_at = datetime.fromtimestamp(updated_at / 1000).isoformat()
+
     user_data = {
         "clerk_user_id": user_id,
         "email": primary_email,
@@ -98,10 +112,10 @@ async def handle_user_created(data: dict):
         "last_name": data.get("last_name"),
         "profile_image_url": data.get("image_url"),
         "username": data.get("username"),
-        "last_sign_in_at": data.get("last_sign_in_at"),
+        "last_sign_in_at": last_sign_in_at,
         "metadata": {
-            "clerk_created_at": data.get("created_at"),
-            "clerk_updated_at": data.get("updated_at"),
+            "clerk_created_at": created_at,
+            "clerk_updated_at": updated_at,
         }
     }
 
@@ -135,16 +149,29 @@ async def handle_user_updated(data: dict):
         logger.error(f"No email found for user {user_id}")
         return
 
+    # Convert millisecond timestamps to ISO format strings for Postgres
+    last_sign_in_at = data.get("last_sign_in_at")
+    if last_sign_in_at:
+        last_sign_in_at = datetime.fromtimestamp(last_sign_in_at / 1000).isoformat()
+
+    created_at = data.get("created_at")
+    if created_at:
+        created_at = datetime.fromtimestamp(created_at / 1000).isoformat()
+
+    updated_at = data.get("updated_at")
+    if updated_at:
+        updated_at = datetime.fromtimestamp(updated_at / 1000).isoformat()
+
     user_data = {
         "email": primary_email,
         "first_name": data.get("first_name"),
         "last_name": data.get("last_name"),
         "profile_image_url": data.get("image_url"),
         "username": data.get("username"),
-        "last_sign_in_at": data.get("last_sign_in_at"),
+        "last_sign_in_at": last_sign_in_at,
         "metadata": {
-            "clerk_created_at": data.get("created_at"),
-            "clerk_updated_at": data.get("updated_at"),
+            "clerk_created_at": created_at,
+            "clerk_updated_at": updated_at,
         }
     }
 
