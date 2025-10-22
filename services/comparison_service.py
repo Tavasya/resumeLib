@@ -131,12 +131,16 @@ Guidelines:
 - overall_match_score: 0-100 rating of how well the user's resume compares to the reference (holistic quality assessment)
 - user_resume_ats_score: 0-100% ATS compatibility score for user's resume
 - db_resume_ats_score: 0-100% ATS compatibility score for reference resume
-- what_to_write_instead: Provide 2 examples of weak text from user's resume and strong alternatives
-- whats_working: 2 things the user is doing right
-- what_needs_work: 2 critical areas for improvement
-- next_steps: 2 actionable next steps to improve the resume
+- what_to_write_instead: Extract 2 actual weak phrases from the user's resume and provide strong alternatives inspired by the reference resume
+- whats_working: Identify 2 specific strengths in the user's resume. Each point should be 1-2 sentences explaining WHY it works and what makes it effective.
+- what_needs_work: Identify 2 critical weaknesses in the user's resume. Each point should be 2-3 sentences explaining the problem, why it's problematic, and how the reference resume does it better.
+- next_steps: Provide 2 specific, actionable recommendations. Each should be 2-3 sentences explaining exactly what to do and why it will improve the resume.
 
-Be specific, constructive, and focus on actionable improvements."""
+IMPORTANT:
+- Analyze the ACTUAL resumes provided, don't use generic feedback
+- For "whats_working", "what_needs_work", and "next_steps", write detailed explanations (2-3 sentences each)
+- Be specific and reference actual content from both resumes
+- Focus on actionable, constructive improvements"""
 
         return prompt
 
