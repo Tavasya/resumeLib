@@ -247,8 +247,8 @@ class ResumeService:
             "33fab7b2-f58e-46a7-bfd7-dee9ecdd9a6f",
             "ab47820b-8036-4942-b90d-a09fd20acdd4",
             "9d79b9db-4112-4a05-bfcc-70be1acf79e4",
-            "a8b0ee8f-95f4-427f-ad2f-2d0fdbff9895",
-            "ecd4db63-cce5-48ce-be03-08b65fa48b11"
+            "99b5ed0a-fb33-4a67-9e8a-fb8a0e85ae6a",
+            "decdf60f-badf-4f2c-88b8-ed4eb478325f"
             
         ]
 
