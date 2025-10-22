@@ -202,16 +202,24 @@ class ResumeScraper:
                 with self.stats_lock:
                     self.stats["files_uploaded"] += 1
 
+                # Extract latest experience info (most recent job)
+                latest_exp = self._extract_latest_experience(llm_data.get("experience", []))
+
+                # Validate: Does latest experience match what we searched for?
+                if not self._matches_search_criteria(latest_exp, file_info["metadata"]):
+                    print(f"  ⊘ Latest experience doesn't match search criteria (searched for {file_info['metadata']['company']} {file_info['metadata']['seniority']}, got {latest_exp.get('company')} {latest_exp.get('seniority')}), skipping")
+                    return
+
                 # Create ResumeCreate object (use Supabase URL as file_url)
-                # Merge LLM data with basic parsed data
+                # Use ACTUAL latest experience from resume, not search metadata
                 resume_data = ResumeCreate(
                     name=llm_data.get("name"),
                     email=email,
                     phone=parsed_data.get("phone"),
                     location=llm_data.get("location"),
-                    title=file_info["metadata"].get("job_title"),
-                    seniority=file_info["metadata"].get("seniority"),
-                    company=file_info["metadata"].get("company"),
+                    title=latest_exp.get("title"),  # Latest job title from resume
+                    seniority=latest_exp.get("seniority"),  # Inferred from latest title
+                    company=latest_exp.get("company"),  # Latest company from resume
                     years_of_experience=llm_data.get("years_of_experience"),
                     experience=llm_data.get("experience", []),
                     education=llm_data.get("education", []),
@@ -263,6 +271,108 @@ class ResumeScraper:
 
         # Print summary
         self._print_summary()
+
+    def _extract_latest_experience(self, experience: List[Dict]) -> Dict[str, Optional[str]]:
+        """
+        Extract latest/most recent experience from experience array
+
+        Args:
+            experience: List of experience dictionaries from LLM
+
+        Returns:
+            Dictionary with title, company, and seniority from latest job
+        """
+        if not experience or len(experience) == 0:
+            return {"title": None, "company": None, "seniority": None}
+
+        # Assume first experience is the most recent (LLM usually orders this way)
+        latest = experience[0]
+
+        title = latest.get("title")
+        company = latest.get("company")
+
+        # Infer seniority from job title
+        seniority = self._infer_seniority(title) if title else None
+
+        return {
+            "title": title,
+            "company": company,
+            "seniority": seniority
+        }
+
+    def _matches_search_criteria(self, latest_exp: Dict[str, Optional[str]], search_metadata: Dict) -> bool:
+        """
+        Check if latest experience matches the search criteria
+
+        Args:
+            latest_exp: Latest experience data (title, company, seniority)
+            search_metadata: Search query metadata (company, seniority, job_title)
+
+        Returns:
+            True if matches, False otherwise
+        """
+        # If no latest experience data, skip it
+        if not latest_exp.get("company") and not latest_exp.get("seniority"):
+            return False
+
+        # Check company match (case-insensitive)
+        search_company = search_metadata.get("company")
+        latest_company = latest_exp.get("company")
+
+        if search_company and latest_company:
+            # Normalize for comparison
+            search_company_lower = search_company.lower().strip()
+            latest_company_lower = latest_company.lower().strip()
+
+            # Check if company names match (or one contains the other for variations)
+            company_match = (
+                search_company_lower in latest_company_lower or
+                latest_company_lower in search_company_lower
+            )
+
+            if not company_match:
+                return False
+
+        # Check seniority match
+        search_seniority = search_metadata.get("seniority")
+        latest_seniority = latest_exp.get("seniority")
+
+        if search_seniority and latest_seniority:
+            if search_seniority.lower() != latest_seniority.lower():
+                return False
+
+        # If we got here, it matches!
+        return True
+
+    def _infer_seniority(self, title: str) -> Optional[str]:
+        """
+        Infer seniority level from job title
+
+        Args:
+            title: Job title string
+
+        Returns:
+            Seniority level (intern, junior, senior, staff, principal, etc.)
+        """
+        if not title:
+            return "junior"  # Default to junior if no title
+
+        title_lower = title.lower()
+
+        # Check for seniority keywords in order of specificity
+        if "intern" in title_lower:
+            return "intern"
+        elif "junior" in title_lower or "jr" in title_lower or "associate" in title_lower:
+            return "junior"
+        elif "principal" in title_lower or "distinguished" in title_lower:
+            return "principal"
+        elif "staff" in title_lower:
+            return "staff"
+        elif "senior" in title_lower or "sr" in title_lower or "lead" in title_lower:
+            return "senior"
+        else:
+            # Default to junior - experienced engineers usually specify their level
+            return "junior"
 
     def _validate_email(self, email: str) -> Optional[str]:
         """

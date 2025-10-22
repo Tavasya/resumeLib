@@ -57,8 +57,11 @@ class SearchConfig:
         for seniority in self.seniority_levels:
             for job_title in self.job_titles:
                 for file_type in self.file_types:
+                    # Remove quotes for more flexible matching
+                    # e.g., finds "Software Engineering Intern" not just "intern software engineer"
                     query_parts = [
-                        f'"{seniority} {job_title}"',
+                        seniority,
+                        f'"{job_title}"',  # Keep job title exact
                         "resume OR CV",
                         f"filetype:{file_type}"
                     ]
