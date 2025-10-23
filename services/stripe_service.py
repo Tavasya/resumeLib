@@ -29,7 +29,7 @@ class StripeService:
             # Get or create Stripe customer
             customer_id = self.get_or_create_customer(clerk_user_id, email)
 
-            # Create checkout session
+            # Create checkout session with 3-day free trial
             checkout_session = stripe.checkout.Session.create(
                 customer=customer_id,
                 payment_method_types=["card"],
@@ -40,6 +40,9 @@ class StripeService:
                     }
                 ],
                 mode="subscription",
+                subscription_data={
+                    "trial_period_days": 3,
+                },
                 success_url=f"{settings.FRONTEND_URL}/subscription/success?session_id={{CHECKOUT_SESSION_ID}}",
                 cancel_url=f"{settings.FRONTEND_URL}/dashboard",
                 metadata={
@@ -100,7 +103,7 @@ class StripeService:
             clerk_user_id: Clerk user ID
 
         Returns:
-            dict: Subscription status details
+            dict: Subscription status details including trial information
         """
         try:
             result = supabase.table("users")\
@@ -112,11 +115,16 @@ class StripeService:
             if not result.data:
                 raise ValueError("User not found")
 
+            status = result.data.get("subscription_status", "active")
+            is_trialing = status == "trialing"
+
             return {
                 "tier": result.data.get("subscription_tier", "free"),
-                "status": result.data.get("subscription_status", "active"),
+                "status": status,
                 "end_date": result.data.get("subscription_end_date"),
                 "is_pro": result.data.get("subscription_tier") == "pro",
+                "is_trialing": is_trialing,
+                "trial_end_date": result.data.get("subscription_end_date") if is_trialing else None,
                 "user_resume_url": result.data.get("user_resume_url")
             }
 
