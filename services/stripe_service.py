@@ -181,20 +181,12 @@ class StripeService:
             session: Stripe checkout session object
         """
         try:
-            print(f"📝 Session data: {session}")
             clerk_user_id = session["metadata"]["clerk_user_id"]
-            print(f"👤 Clerk User ID: {clerk_user_id}")
-
             customer_id = session["customer"]
-            print(f"💳 Customer ID: {customer_id}")
-
             subscription_id = session["subscription"]
-            print(f"📋 Subscription ID: {subscription_id}")
 
             # Get subscription details from Stripe
             subscription = stripe.Subscription.retrieve(subscription_id)
-            print(f"✅ Retrieved subscription from Stripe: {subscription.status}")
-            print(f"📦 Full subscription object keys: {subscription.keys()}")
 
             # Get period dates from subscription items
             # Stripe subscriptions have current_period_start/end in the subscription items
@@ -202,16 +194,12 @@ class StripeService:
             period_start = subscription_item['current_period_start']
             period_end = subscription_item['current_period_end']
 
-            print(f"🕐 Raw timestamps - start: {period_start}, end: {period_end}")
-
             # Convert Unix timestamps to UTC datetime strings
             start_date = datetime.fromtimestamp(period_start, tz=timezone.utc).isoformat()
             end_date = datetime.fromtimestamp(period_end, tz=timezone.utc).isoformat()
 
-            print(f"📅 Converted dates - start: {start_date}, end: {end_date}")
-
             # Update user in Supabase
-            result = supabase.table("users").update({
+            supabase.table("users").update({
                 "subscription_tier": "pro",
                 "subscription_status": subscription.status,
                 "stripe_customer_id": customer_id,
@@ -220,14 +208,10 @@ class StripeService:
                 "subscription_end_date": end_date,
             }).eq("clerk_user_id", clerk_user_id).execute()
 
-            print(f"💾 Supabase update result: {result.data}")
             logger.info(f"Updated subscription for user {clerk_user_id}")
 
         except Exception as e:
-            print(f"❌ Error in handle_checkout_completed: {str(e)}")
             logger.error(f"Error handling checkout completed: {str(e)}")
-            import traceback
-            traceback.print_exc()
             raise
 
     def handle_subscription_updated(self, subscription: Dict) -> None:
