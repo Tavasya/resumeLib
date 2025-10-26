@@ -243,8 +243,7 @@ Text:
 
             return detections
 
-        except Exception as e:
-            print(f"AI detection error: {e}")
+        except Exception:
             return []
 
     def _find_text_coords(
@@ -337,8 +336,8 @@ Text:
                                         "flags": int(span.get("flags", 0))
                                     }
 
-        except Exception as e:
-            print(f"Error extracting text style: {e}")
+        except Exception:
+            pass
 
         # Default fallback
         return {
@@ -391,11 +390,8 @@ Text:
                 replacement_text = replacement.get("replacement_text", "").strip()
 
                 if replacement_text:
-                    print(f"📝 Replacing text: '{replacement.get('original_text')}' → '{replacement_text}'")
-
-                    # User provided replacement text - white out and insert new text
-                    page.add_redact_annot(rect, fill=(1, 1, 1))  # White fill
-                    page.apply_redactions()
+                    # User provided replacement text - draw white rectangle to cover original text
+                    page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
 
                     # Get original style or use defaults
                     style = replacement.get("style", {})
@@ -415,9 +411,8 @@ Text:
                     original_font = style.get("font_name", "helv").lower()
                     font_name = self._map_to_builtin_font(original_font)
 
-                    print(f"   Font: {original_font} → {font_name}, Size: {font_size}, Color: {color_rgb}")
-
                     # Insert new text with original styling
+                    # insert_textbox returns number of successfully written characters (or negative if failed)
                     result = page.insert_textbox(
                         rect,
                         replacement_text,
@@ -427,7 +422,21 @@ Text:
                         align=0  # Left align
                     )
 
-                    print(f"   insert_textbox result: {result}")
+                    # If insert_textbox failed, try insert_text as fallback
+                    if result <= 0:
+                        try:
+                            # Use insert_text with a point instead of a box
+                            # Position at left edge, vertically centered
+                            text_point = fitz.Point(rect.x0, rect.y0 + rect.height * 0.75)
+                            page.insert_text(
+                                text_point,
+                                replacement_text,
+                                fontsize=font_size,
+                                fontname=font_name,
+                                color=color_rgb
+                            )
+                        except Exception:
+                            pass
                 else:
                     # No replacement text - just black out (redact) the area
                     page.add_redact_annot(rect, fill=(0, 0, 0))  # Black fill
