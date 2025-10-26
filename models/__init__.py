@@ -7,6 +7,13 @@ from .resume import (
     Project,
     Certification,
 )
+from .anonymizer import (
+    BoundingBox,
+    PIIDetection,
+    DetectPIIResponse,
+    SaveAnonymizedRequest,
+    SaveAnonymizedResponse,
+)
 
 __all__ = [
     "ResumeCreate",
@@ -16,4 +23,9 @@ __all__ = [
     "Education",
     "Project",
     "Certification",
+    "BoundingBox",
+    "PIIDetection",
+    "DetectPIIResponse",
+    "SaveAnonymizedRequest",
+    "SaveAnonymizedResponse",
 ]
