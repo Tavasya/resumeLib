@@ -4,8 +4,6 @@ Handles PDF upload, PII detection, and anonymization preferences
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
-import tempfile
-import os
 import uuid
 import jwt
 from datetime import datetime, timedelta
@@ -54,54 +52,46 @@ async def detect_pii(
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(400, "Only PDF files are supported")
 
-        # Read file
+        # Read file content into memory
         file_content = await file.read()
 
-        # Save to temp file for processing
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp:
-            temp.write(file_content)
-            temp_path = temp.name
+        print(f"📄 Processing PDF:")
+        print(f"   File size: {len(file_content)} bytes")
 
-        try:
-            # Upload original to Supabase storage
-            file_id = str(uuid.uuid4())
-            storage_path = f"{user_id}/anonymizer/{file_id}.pdf"
+        # Process PDF from memory (no temp file needed)
+        result = anonymizer_service.detect_pii_with_coordinates(file_content)
 
-            print(f"📤 Uploading PDF to Supabase:")
-            print(f"   File ID: {file_id}")
-            print(f"   User ID: {user_id}")
-            print(f"   Storage path: {storage_path}")
-            print(f"   File size: {len(file_content)} bytes")
+        if not result["success"]:
+            print(f"❌ PII detection failed: {result.get('error')}")
+            raise HTTPException(500, result.get("error", "PII detection failed"))
 
-            upload_result = supabase.storage.from_("anonymized-resumes").upload(
-                path=storage_path,
-                file=file_content,
-                file_options={"content-type": "application/pdf", "upsert": "true"}
-            )
+        print(f"✅ PII detection successful: {len(result['detections'])} detections found")
 
-            print(f"✅ Upload successful: {upload_result}")
+        # Only upload to Supabase if processing succeeded
+        file_id = str(uuid.uuid4())
+        storage_path = f"{user_id}/anonymizer/{file_id}.pdf"
 
-            original_url = supabase.storage.from_("anonymized-resumes").get_public_url(storage_path)
-            print(f"📎 Public URL: {original_url}")
+        print(f"📤 Uploading PDF to Supabase:")
+        print(f"   File ID: {file_id}")
+        print(f"   Storage path: {storage_path}")
 
-            # Detect PII with coordinates
-            result = anonymizer_service.detect_pii_with_coordinates(temp_path)
+        upload_result = supabase.storage.from_("anonymized-resumes").upload(
+            path=storage_path,
+            file=file_content,
+            file_options={"content-type": "application/pdf", "upsert": "true"}
+        )
 
-            if not result["success"]:
-                raise HTTPException(500, result.get("error", "PII detection failed"))
+        print(f"✅ Upload successful")
 
-            return DetectPIIResponse(
-                success=True,
-                file_id=file_id,
-                original_url=original_url,
-                detections=result["detections"],
-                total_pages=result["total_pages"]
-            )
+        original_url = supabase.storage.from_("anonymized-resumes").get_public_url(storage_path)
 
-        finally:
-            # Cleanup temp file
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+        return DetectPIIResponse(
+            success=True,
+            file_id=file_id,
+            original_url=original_url,
+            detections=result["detections"],
+            total_pages=result["total_pages"]
+        )
 
     except HTTPException:
         raise

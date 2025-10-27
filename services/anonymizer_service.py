@@ -13,20 +13,20 @@ from services.llm_service import llm_service
 class AnonymizerService:
     """Service for detecting PII in resumes with coordinate information"""
 
-    def detect_pii_with_coordinates(self, pdf_path: str) -> Dict[str, Any]:
+    def detect_pii_with_coordinates(self, pdf_bytes: bytes) -> Dict[str, Any]:
         """
         Detect PII in PDF and return coordinates for each detection
 
         Uses PyMuPDF (fitz) to get text positions
 
         Args:
-            pdf_path: Path to PDF file
+            pdf_bytes: PDF file content as bytes
 
         Returns:
             Dictionary with success status, detections list, and total pages
         """
         try:
-            doc = fitz.open(pdf_path)
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             detections = []
 
             for page_num, page in enumerate(doc):
