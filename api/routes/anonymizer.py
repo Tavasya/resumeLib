@@ -7,6 +7,8 @@ from typing import List
 import tempfile
 import os
 import uuid
+import jwt
+from datetime import datetime, timedelta
 
 from api.auth import get_user_id
 from services.anonymizer_service import anonymizer_service
@@ -20,9 +22,12 @@ from models.anonymizer import (
     ListSessionsResponse,
     LoadSessionResponse,
     SessionSummary,
-    SessionDetail
+    SessionDetail,
+    CreateShareLinkRequest,
+    CreateShareLinkResponse,
+    SharedSessionResponse
 )
-from config import supabase
+from config import supabase, settings
 
 router = APIRouter()
 
@@ -343,6 +348,148 @@ async def load_session(
     except Exception as e:
         print(f"Error loading session: {e}")
         return LoadSessionResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.post("/create-share-link", response_model=CreateShareLinkResponse)
+async def create_share_link(
+    request: CreateShareLinkRequest,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Create a shareable link for an anonymizer session using JWT
+
+    Generates a signed JWT token containing the session_id that can be
+    shared publicly. The token cannot be tampered with.
+
+    Args:
+        request: CreateShareLinkRequest with session_id
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        CreateShareLinkResponse with share_token and share_url
+    """
+    try:
+        # Verify the session exists and belongs to this user
+        result = supabase.table("anonymizer_sessions").select("id").eq(
+            "id", request.session_id
+        ).eq("user_id", user_id).single().execute()
+
+        if not result.data:
+            raise HTTPException(404, "Session not found or access denied")
+
+        # Create JWT payload
+        payload = {
+            "session_id": request.session_id,
+            "iat": datetime.utcnow(),
+        }
+
+        # Add expiration if specified
+        if request.expires_in_days:
+            payload["exp"] = datetime.utcnow() + timedelta(days=request.expires_in_days)
+
+        # Add password hash if specified
+        if request.password:
+            import hashlib
+            password_hash = hashlib.sha256(request.password.encode()).hexdigest()
+            payload["password_hash"] = password_hash
+
+        # Sign the JWT using Clerk secret key
+        share_token = jwt.encode(
+            payload,
+            settings.CLERK_SECRET_KEY,
+            algorithm="HS256"
+        )
+
+        # Build the share URL
+        share_url = f"{settings.FRONTEND_URL}/share/{share_token}"
+
+        # Return expiration time if set
+        expires_at = None
+        if request.expires_in_days:
+            expires_at = (datetime.utcnow() + timedelta(days=request.expires_in_days)).isoformat()
+
+        return CreateShareLinkResponse(
+            success=True,
+            share_token=share_token,
+            share_url=share_url,
+            expires_at=expires_at
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating share link: {e}")
+        return CreateShareLinkResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/share/{token}", response_model=SharedSessionResponse)
+async def get_shared_session(token: str):
+    """
+    Get session data from a share token (PUBLIC - no auth required)
+
+    Decodes the JWT token to get session_id and returns the session data
+    in read-only mode for viewing.
+
+    Args:
+        token: JWT token containing session_id
+
+    Returns:
+        SharedSessionResponse with session data
+    """
+    try:
+        # Decode JWT token
+        try:
+            payload = jwt.decode(
+                token,
+                settings.CLERK_SECRET_KEY,
+                algorithms=["HS256"]
+            )
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(410, "Share link has expired")
+        except jwt.InvalidTokenError as e:
+            raise HTTPException(400, f"Invalid share token: {str(e)}")
+
+        session_id = payload.get("session_id")
+        if not session_id:
+            raise HTTPException(400, "Invalid token: missing session_id")
+
+        # Get session data from database
+        result = supabase.table("anonymizer_sessions").select("*").eq(
+            "id", session_id
+        ).single().execute()
+
+        if not result.data:
+            raise HTTPException(404, "Session not found")
+
+        row = result.data
+
+        # Build session detail
+        session = SessionDetail(
+            session_id=str(row["id"]),
+            file_id=row["file_id"],
+            filename=row["filename"],
+            original_url=row["original_url"],
+            detections=row["detections"],
+            manual_blurs=row["manual_blurs"],
+            num_pages=row["num_pages"]
+        )
+
+        return SharedSessionResponse(
+            success=True,
+            session=session
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error loading shared session: {e}")
+        return SharedSessionResponse(
             success=False,
             error=str(e)
         )
