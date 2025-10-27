@@ -13,10 +13,14 @@ from services.anonymizer_service import anonymizer_service
 from models.anonymizer import (
     DetectPIIResponse,
     PIIDetection,
-    SaveAnonymizedRequest,
-    SaveAnonymizedResponse,
     GenerateAnonymizedPDFRequest,
-    GenerateAnonymizedPDFResponse
+    GenerateAnonymizedPDFResponse,
+    SaveSessionRequest,
+    SaveSessionResponse,
+    ListSessionsResponse,
+    LoadSessionResponse,
+    SessionSummary,
+    SessionDetail
 )
 from config import supabase
 
@@ -108,44 +112,6 @@ async def detect_pii(
         )
 
 
-@router.post("/save-anonymized", response_model=SaveAnonymizedResponse)
-async def save_anonymized_resume(
-    request: SaveAnonymizedRequest,
-    user_id: str = Depends(get_user_id)
-):
-    """
-    Save user's anonymization preferences to database
-
-    Stores which fields should be blurred
-
-    Args:
-        request: SaveAnonymizedRequest with file_id and detections
-        user_id: Authenticated user ID from Clerk JWT
-
-    Returns:
-        SaveAnonymizedResponse with success status
-    """
-    try:
-        # Store in Supabase database
-        supabase.table("anonymized_resumes").insert({
-            "user_id": user_id,
-            "file_id": request.file_id,
-            "pii_detections": [d.model_dump() for d in request.detections],
-        }).execute()
-
-        return SaveAnonymizedResponse(
-            success=True,
-            message="Anonymization preferences saved successfully"
-        )
-
-    except Exception as e:
-        print(f"Error saving anonymized resume: {e}")
-        return SaveAnonymizedResponse(
-            success=False,
-            error=str(e)
-        )
-
-
 @router.post("/generate-anonymized-pdf", response_model=GenerateAnonymizedPDFResponse)
 async def generate_anonymized_pdf(
     request: GenerateAnonymizedPDFRequest,
@@ -204,6 +170,179 @@ async def generate_anonymized_pdf(
     except Exception as e:
         print(f"Error generating anonymized PDF: {e}")
         return GenerateAnonymizedPDFResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.post("/save-session", response_model=SaveSessionResponse)
+async def save_session(
+    request: SaveSessionRequest,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Save or update an anonymizer session
+
+    Stores all detection data, blur states, replacement text, and manual blurs
+    for a specific file. If a session already exists for this user+file_id,
+    it will be updated (upsert behavior).
+
+    Args:
+        request: SaveSessionRequest with file_id, filename, detections, manual_blurs, num_pages
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        SaveSessionResponse with session_id
+    """
+    try:
+        # Get original_url from storage
+        storage_path = f"{user_id}/anonymizer/{request.file_id}.pdf"
+        original_url = supabase.storage.from_("anonymized-resumes").get_public_url(storage_path)
+
+        # Convert detections and manual_blurs to JSON
+        detections_json = [d.model_dump() for d in request.detections]
+        manual_blurs_json = [mb.model_dump() for mb in request.manual_blurs]
+
+        # Check if session already exists for this user+file_id
+        existing = supabase.table("anonymizer_sessions").select("id").eq(
+            "user_id", user_id
+        ).eq("file_id", request.file_id).execute()
+
+        if existing.data and len(existing.data) > 0:
+            # Update existing session
+            session_id = existing.data[0]["id"]
+            result = supabase.table("anonymizer_sessions").update({
+                "filename": request.filename,
+                "detections": detections_json,
+                "manual_blurs": manual_blurs_json,
+                "num_pages": request.num_pages,
+                "updated_at": "NOW()"
+            }).eq("id", session_id).execute()
+
+            message = "Session updated successfully"
+        else:
+            # Create new session
+            result = supabase.table("anonymizer_sessions").insert({
+                "user_id": user_id,
+                "file_id": request.file_id,
+                "filename": request.filename,
+                "original_url": original_url,
+                "detections": detections_json,
+                "manual_blurs": manual_blurs_json,
+                "num_pages": request.num_pages
+            }).execute()
+
+            session_id = result.data[0]["id"]
+            message = "Session saved successfully"
+
+        return SaveSessionResponse(
+            success=True,
+            session_id=str(session_id),
+            message=message
+        )
+
+    except Exception as e:
+        print(f"Error saving session: {e}")
+        return SaveSessionResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/sessions", response_model=ListSessionsResponse)
+async def list_sessions(
+    user_id: str = Depends(get_user_id)
+):
+    """
+    List all anonymizer sessions for the current user
+
+    Returns summary information for each session (no full detection data)
+
+    Args:
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        ListSessionsResponse with array of session summaries
+    """
+    try:
+        # Get all sessions for this user, ordered by updated_at descending
+        result = supabase.table("anonymizer_sessions").select(
+            "id, file_id, filename, original_url, num_pages, created_at, updated_at"
+        ).eq("user_id", user_id).order("updated_at", desc=True).execute()
+
+        sessions = []
+        for row in result.data:
+            sessions.append(SessionSummary(
+                session_id=str(row["id"]),
+                file_id=row["file_id"],
+                filename=row["filename"],
+                original_url=row["original_url"],
+                num_pages=row["num_pages"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"]
+            ))
+
+        return ListSessionsResponse(
+            success=True,
+            sessions=sessions
+        )
+
+    except Exception as e:
+        print(f"Error listing sessions: {e}")
+        return ListSessionsResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.get("/sessions/{session_id}", response_model=LoadSessionResponse)
+async def load_session(
+    session_id: str,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Load a specific anonymizer session with full data
+
+    Returns all detection data, blur states, replacement text, and manual blurs
+
+    Args:
+        session_id: UUID of the session to load
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        LoadSessionResponse with full session details
+    """
+    try:
+        # Get session by ID and verify it belongs to this user
+        result = supabase.table("anonymizer_sessions").select("*").eq(
+            "id", session_id
+        ).eq("user_id", user_id).single().execute()
+
+        if not result.data:
+            raise HTTPException(404, "Session not found or access denied")
+
+        row = result.data
+
+        session = SessionDetail(
+            session_id=str(row["id"]),
+            file_id=row["file_id"],
+            filename=row["filename"],
+            original_url=row["original_url"],
+            detections=row["detections"],
+            manual_blurs=row["manual_blurs"],
+            num_pages=row["num_pages"]
+        )
+
+        return LoadSessionResponse(
+            success=True,
+            session=session
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error loading session: {e}")
+        return LoadSessionResponse(
             success=False,
             error=str(e)
         )

@@ -41,19 +41,6 @@ class DetectPIIResponse(BaseModel):
     error: Optional[str] = None
 
 
-class SaveAnonymizedRequest(BaseModel):
-    """Request to save anonymization preferences"""
-    file_id: str
-    detections: List[PIIDetection] = Field(..., description="List of PII detections with blur state")
-
-
-class SaveAnonymizedResponse(BaseModel):
-    """Response from save anonymized endpoint"""
-    success: bool
-    message: Optional[str] = None
-    error: Optional[str] = None
-
-
 class ReplacementItem(BaseModel):
     """Single text replacement with location"""
     page: int = Field(..., description="PDF page number (0-indexed)")
@@ -75,4 +62,78 @@ class GenerateAnonymizedPDFResponse(BaseModel):
     success: bool
     anonymized_url: Optional[str] = Field(None, description="Download URL for anonymized PDF")
     original_url: Optional[str] = Field(None, description="Original PDF URL")
+    error: Optional[str] = None
+
+
+# Session Management Models
+
+class ManualBlur(BaseModel):
+    """Manual blur region added by user"""
+    page: int = Field(..., description="PDF page number (0-indexed)")
+    bbox: BoundingBox = Field(..., description="Bounding box coordinates")
+    id: str = Field(..., description="Unique identifier for this manual blur")
+
+
+class SessionPIIDetection(BaseModel):
+    """PII detection with blur and replacement state"""
+    type: str = Field(..., description="Type: email, phone, name, company, school, linkedin, website, github, address")
+    text: str = Field(..., description="The actual text detected")
+    page: int = Field(..., description="PDF page number (0-indexed)")
+    bbox: BoundingBox = Field(..., description="Bounding box coordinates")
+    blurred: bool = Field(default=False, description="Whether this detection should be blurred")
+    replacement_text: Optional[str] = Field(None, description="Replacement text if user wants to replace instead of blur")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score (0.0 - 1.0)")
+    style: TextStyle = Field(..., description="Original text styling information")
+
+
+class SaveSessionRequest(BaseModel):
+    """Request to save/update anonymizer session"""
+    file_id: str = Field(..., description="UUID of the uploaded file")
+    filename: str = Field(..., description="Original filename for display")
+    detections: List[SessionPIIDetection] = Field(..., description="All PII detections with their blur/replacement state")
+    manual_blurs: List[ManualBlur] = Field(default_factory=list, description="User-added manual blur regions")
+    num_pages: int = Field(..., description="Total number of pages in PDF")
+
+
+class SaveSessionResponse(BaseModel):
+    """Response from save session endpoint"""
+    success: bool
+    session_id: Optional[str] = Field(None, description="Database session ID (UUID)")
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+class SessionSummary(BaseModel):
+    """Summary of an anonymizer session for list view"""
+    session_id: str = Field(..., description="Database session ID (UUID)")
+    file_id: str = Field(..., description="File UUID")
+    filename: str = Field(..., description="Original filename")
+    original_url: str = Field(..., description="URL to original PDF")
+    num_pages: int = Field(..., description="Number of pages in PDF")
+    created_at: str = Field(..., description="ISO timestamp of creation")
+    updated_at: str = Field(..., description="ISO timestamp of last update")
+
+
+class ListSessionsResponse(BaseModel):
+    """Response from list sessions endpoint"""
+    success: bool
+    sessions: List[SessionSummary] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class SessionDetail(BaseModel):
+    """Full session data including all detections"""
+    session_id: str = Field(..., description="Database session ID (UUID)")
+    file_id: str = Field(..., description="File UUID")
+    filename: str = Field(..., description="Original filename")
+    original_url: str = Field(..., description="URL to original PDF")
+    detections: List[SessionPIIDetection] = Field(..., description="All PII detections with states")
+    manual_blurs: List[ManualBlur] = Field(..., description="Manual blur regions")
+    num_pages: int = Field(..., description="Number of pages in PDF")
+
+
+class LoadSessionResponse(BaseModel):
+    """Response from load session endpoint"""
+    success: bool
+    session: Optional[SessionDetail] = None
     error: Optional[str] = None

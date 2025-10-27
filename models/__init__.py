@@ -11,8 +11,10 @@ from .anonymizer import (
     BoundingBox,
     PIIDetection,
     DetectPIIResponse,
-    SaveAnonymizedRequest,
-    SaveAnonymizedResponse,
+    SaveSessionRequest,
+    SaveSessionResponse,
+    ListSessionsResponse,
+    LoadSessionResponse,
 )
 
 __all__ = [
@@ -26,6 +28,8 @@ __all__ = [
     "BoundingBox",
     "PIIDetection",
     "DetectPIIResponse",
-    "SaveAnonymizedRequest",
-    "SaveAnonymizedResponse",
+    "SaveSessionRequest",
+    "SaveSessionResponse",
+    "ListSessionsResponse",
+    "LoadSessionResponse",
 ]
