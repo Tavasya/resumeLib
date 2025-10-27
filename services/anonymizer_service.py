@@ -6,6 +6,7 @@ import fitz  # PyMuPDF
 from typing import List, Dict, Any
 import json
 import io
+import uuid
 from services.llm_service import llm_service
 
 
@@ -147,6 +148,7 @@ class AnonymizerService:
                 style = self._extract_text_with_style(page, bbox)
 
                 detections.append({
+                    "id": str(uuid.uuid4()),
                     "type": pii_type,
                     "text": matched_text,
                     "page": page_num,
@@ -288,6 +290,7 @@ Text:
             style = self._extract_text_with_style(page, bbox)
 
             detections.append({
+                "id": str(uuid.uuid4()),
                 "type": pii_type,
                 "text": text,
                 "page": page_num,

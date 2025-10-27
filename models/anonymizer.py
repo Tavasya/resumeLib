@@ -23,6 +23,7 @@ class TextStyle(BaseModel):
 
 class PIIDetection(BaseModel):
     """Single PII detection with location"""
+    id: str = Field(..., description="Unique identifier for this detection (UUID)")
     type: str = Field(..., description="Type: email, phone, name, company, school, linkedin, website, github, address")
     text: str = Field(..., description="The actual text detected")
     page: int = Field(..., description="PDF page number (0-indexed)")
@@ -76,6 +77,7 @@ class ManualBlur(BaseModel):
 
 class SessionPIIDetection(BaseModel):
     """PII detection with blur and replacement state"""
+    id: str = Field(..., description="Unique identifier for this detection (UUID)")
     type: str = Field(..., description="Type: email, phone, name, company, school, linkedin, website, github, address")
     text: str = Field(..., description="The actual text detected")
     page: int = Field(..., description="PDF page number (0-indexed)")
