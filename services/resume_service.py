@@ -106,6 +106,52 @@ class ResumeService:
             print(f"Error getting resume by email: {e}")
             return None
 
+    def get_resume_by_name(self, name: str) -> Optional[ResumeInDB]:
+        """
+        Get a resume by name (case-insensitive, to avoid duplicates)
+
+        Args:
+            name: Full name to search for
+
+        Returns:
+            ResumeInDB object if found, None otherwise
+        """
+        try:
+            response = supabase.table(self.table).select("*").ilike("name", name).limit(1).execute()
+
+            if response.data and len(response.data) > 0:
+                return ResumeInDB(**response.data[0])
+            return None
+
+        except Exception as e:
+            print(f"Error getting resume by name: {e}")
+            return None
+
+    def check_duplicate_exists(self, name: Optional[str] = None, email: Optional[str] = None) -> Optional[ResumeInDB]:
+        """
+        Check if a duplicate resume exists based on name or email
+
+        Args:
+            name: Full name to check
+            email: Email address to check
+
+        Returns:
+            ResumeInDB object if duplicate found, None otherwise
+        """
+        # First check by email (most reliable)
+        if email:
+            existing = self.get_resume_by_email(email)
+            if existing:
+                return existing
+
+        # Then check by name
+        if name:
+            existing = self.get_resume_by_name(name)
+            if existing:
+                return existing
+
+        return None
+
     def list_resumes(
         self,
         limit: int = 100,

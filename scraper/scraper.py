@@ -166,28 +166,30 @@ class ResumeScraper:
                 with self.stats_lock:
                     self.stats["files_parsed"] += 1
 
-                # Check if resume already exists (by email)
-                if skip_existing and parsed_data.get("email"):
-                    existing = resume_service.get_resume_by_email(parsed_data["email"])
-                    if existing:
-                        print(f"  ⊘ Resume with email {parsed_data['email']} already exists, skipping")
-                        return
-
-                # Extract skills from raw text
-                skills = self.parser.extract_skills(parsed_data["raw_text"])
-
-                # Validate and clean email
+                # Validate and clean email early
                 email = parsed_data.get("email")
                 if email:
                     email = self._validate_email(email)
 
-                # Use LLM to extract structured data
+                # Use LLM to extract structured data (do this before duplicate check to get name)
                 print(f"  → Using LLM to parse: {file_info['file_path']}")
                 llm_data = llm_service.parse_resume(parsed_data["raw_text"])
 
                 if not llm_data:
                     print(f"  ⚠ LLM parsing failed, using basic data only")
                     llm_data = {}
+
+                # Check if resume already exists (by email OR name)
+                name = llm_data.get("name")
+                if skip_existing:
+                    existing = resume_service.check_duplicate_exists(name=name, email=email)
+                    if existing:
+                        identifier = email or name or "this resume"
+                        print(f"  ⊘ Resume for {identifier} already exists (ID: {existing.id}), skipping")
+                        return
+
+                # Extract skills from raw text
+                skills = self.parser.extract_skills(parsed_data["raw_text"])
 
                 # Upload file to Supabase Storage
                 print(f"  → Uploading to Supabase: {file_info['file_path']}")

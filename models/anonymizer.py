@@ -146,16 +146,13 @@ class LoadSessionResponse(BaseModel):
 class CreateShareLinkRequest(BaseModel):
     """Request to create a shareable link"""
     session_id: str = Field(..., description="UUID of the session to share")
-    expires_in_days: Optional[int] = Field(None, description="Number of days until link expires (optional)")
-    password: Optional[str] = Field(None, description="Optional password to protect the link")
 
 
 class CreateShareLinkResponse(BaseModel):
     """Response from create share link endpoint"""
     success: bool
-    share_token: Optional[str] = Field(None, description="UUID token for sharing")
+    share_token: Optional[str] = Field(None, description="Human-readable slug for sharing (e.g., 'johns-resume-x7k9')")
     share_url: Optional[str] = Field(None, description="Full URL to share")
-    expires_at: Optional[str] = Field(None, description="ISO timestamp when link expires")
     error: Optional[str] = None
 
 

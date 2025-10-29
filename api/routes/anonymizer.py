@@ -5,8 +5,6 @@ Handles PDF upload, PII detection, and anonymization preferences
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from typing import List
 import uuid
-import jwt
-from datetime import datetime, timedelta
 
 from api.auth import get_user_id
 from services.anonymizer_service import anonymizer_service
@@ -349,63 +347,56 @@ async def create_share_link(
     user_id: str = Depends(get_user_id)
 ):
     """
-    Create a shareable link for an anonymizer session using JWT
+    Create a shareable link for an anonymizer session using readable slug
 
-    Generates a signed JWT token containing the session_id that can be
-    shared publicly. The token cannot be tampered with.
+    Generates a human-readable slug from the filename (e.g., "johns-resume-x7k9")
+    that can be shared publicly.
 
     Args:
         request: CreateShareLinkRequest with session_id
         user_id: Authenticated user ID from Clerk JWT
 
     Returns:
-        CreateShareLinkResponse with share_token and share_url
+        CreateShareLinkResponse with share_token (slug) and share_url
     """
     try:
         # Verify the session exists and belongs to this user
-        result = supabase.table("anonymizer_sessions").select("id").eq(
+        result = supabase.table("anonymizer_sessions").select("id, filename").eq(
             "id", request.session_id
         ).eq("user_id", user_id).single().execute()
 
         if not result.data:
             raise HTTPException(404, "Session not found or access denied")
 
-        # Create JWT payload
-        payload = {
-            "session_id": request.session_id,
-            "iat": datetime.utcnow(),
-        }
+        filename = result.data["filename"]
 
-        # Add expiration if specified
-        if request.expires_in_days:
-            payload["exp"] = datetime.utcnow() + timedelta(days=request.expires_in_days)
+        # Generate slug from filename
+        import re
+        import secrets
 
-        # Add password hash if specified
-        if request.password:
-            import hashlib
-            password_hash = hashlib.sha256(request.password.encode()).hexdigest()
-            payload["password_hash"] = password_hash
+        # Remove file extension and sanitize
+        base_name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+        # Replace spaces and special chars with hyphens, lowercase
+        slug_base = re.sub(r'[^a-zA-Z0-9]+', '-', base_name).lower().strip('-')
+        # Limit length
+        slug_base = slug_base[:50]
 
-        # Sign the JWT using Clerk secret key
-        share_token = jwt.encode(
-            payload,
-            settings.CLERK_SECRET_KEY,
-            algorithm="HS256"
-        )
+        # Add random suffix for uniqueness
+        random_suffix = secrets.token_urlsafe(4)[:6].lower().replace('_', '').replace('-', '')
+        share_slug = f"{slug_base}-{random_suffix}"
+
+        # Update the session with the share_slug
+        supabase.table("anonymizer_sessions").update({
+            "share_slug": share_slug
+        }).eq("id", request.session_id).execute()
 
         # Build the share URL
-        share_url = f"{settings.FRONTEND_URL}/share/{share_token}"
-
-        # Return expiration time if set
-        expires_at = None
-        if request.expires_in_days:
-            expires_at = (datetime.utcnow() + timedelta(days=request.expires_in_days)).isoformat()
+        share_url = f"{settings.FRONTEND_URL}/share/{share_slug}"
 
         return CreateShareLinkResponse(
             success=True,
-            share_token=share_token,
-            share_url=share_url,
-            expires_at=expires_at
+            share_token=share_slug,
+            share_url=share_url
         )
 
     except HTTPException:
@@ -418,44 +409,28 @@ async def create_share_link(
         )
 
 
-@router.get("/share/{token}", response_model=SharedSessionResponse)
-async def get_shared_session(token: str):
+@router.get("/share/{slug}", response_model=SharedSessionResponse)
+async def get_shared_session(slug: str):
     """
-    Get session data from a share token (PUBLIC - no auth required)
+    Get session data from a share slug (PUBLIC - no auth required)
 
-    Decodes the JWT token to get session_id and returns the session data
+    Looks up the session by readable slug and returns the session data
     in read-only mode for viewing.
 
     Args:
-        token: JWT token containing session_id
+        slug: Human-readable slug (e.g., "johns-resume-x7k9")
 
     Returns:
         SharedSessionResponse with session data
     """
     try:
-        # Decode JWT token
-        try:
-            payload = jwt.decode(
-                token,
-                settings.CLERK_SECRET_KEY,
-                algorithms=["HS256"]
-            )
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(410, "Share link has expired")
-        except jwt.InvalidTokenError as e:
-            raise HTTPException(400, f"Invalid share token: {str(e)}")
-
-        session_id = payload.get("session_id")
-        if not session_id:
-            raise HTTPException(400, "Invalid token: missing session_id")
-
-        # Get session data from database
+        # Get session data from database by share_slug
         result = supabase.table("anonymizer_sessions").select("*").eq(
-            "id", session_id
+            "share_slug", slug
         ).single().execute()
 
         if not result.data:
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, "Shared session not found")
 
         row = result.data
 
