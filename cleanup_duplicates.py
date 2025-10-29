@@ -28,25 +28,36 @@ def get_duplicates_to_delete():
     Get all duplicate resumes that should be deleted (keeps the newest one)
     Returns list of dicts with id, name, email, file_url, created_at
     """
-    # Get all resumes
-    response = supabase.table('resumes').select('id,name,email,file_url,created_at').not_.is_('name', 'null').order('name', desc=False).order('created_at', desc=True).execute()
+    # Get all resumes with names
+    response = supabase.table('resumes').select('id,name,email,file_url,created_at').not_.is_('name', 'null').execute()
 
     if not response.data:
         return []
 
+    # Sort in Python: by name, then by created_at (newest first)
+    resumes = sorted(
+        response.data,
+        key=lambda r: (r['name'], r.get('created_at', '')),
+        reverse=False  # name ascending, but we'll reverse created_at separately
+    )
+
     # Group by name+email and identify duplicates
-    seen = {}  # key: (name, email), value: first (newest) resume
-    duplicates = []
+    groups = {}  # key: (name, email), value: list of resumes
 
-    for resume in response.data:
+    for resume in resumes:
         key = (resume['name'], resume.get('email') or 'NO_EMAIL_PROVIDED')
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(resume)
 
-        if key in seen:
-            # This is a duplicate (older entry)
-            duplicates.append(resume)
-        else:
-            # This is the first (newest) entry for this person
-            seen[key] = resume
+    # For each group, keep the newest one and mark others as duplicates
+    duplicates = []
+    for key, group in groups.items():
+        if len(group) > 1:
+            # Sort by created_at descending (newest first)
+            group_sorted = sorted(group, key=lambda r: r.get('created_at', ''), reverse=True)
+            # Keep the first (newest), delete the rest
+            duplicates.extend(group_sorted[1:])
 
     return duplicates
 

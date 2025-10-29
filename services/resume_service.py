@@ -302,15 +302,11 @@ class ResumeService:
             # Start with all resumes
             db_query = supabase.table(self.table).select("*")
 
-            # Full-text search using ilike on raw_text
-            if query:
-                db_query = db_query.ilike("raw_text", f"%{query}%")
-
-            # Filter by seniority
+            # Filter by seniority first (database-level)
             if seniority:
                 db_query = db_query.eq("seniority", seniority.lower())
 
-            # Filter by experience range
+            # Filter by experience range (database-level)
             if min_experience is not None:
                 db_query = db_query.gte("years_of_experience", min_experience)
             if max_experience is not None:
@@ -322,6 +318,51 @@ class ResumeService:
             # Execute query
             response = db_query.execute()
             all_results = response.data if response.data else []
+
+            # Smart search filtering with relevance scoring
+            if query:
+                query_lower = query.lower()
+                scored_results = []
+
+                for resume in all_results:
+                    score = 0
+
+                    # Check current company (highest priority)
+                    company = resume.get("company", "") or ""
+                    if query_lower in company.lower():
+                        score += 100
+
+                    # Check past companies in experience array (high priority)
+                    experience = resume.get("experience", [])
+                    for exp in experience:
+                        if isinstance(exp, dict):
+                            exp_company = exp.get("company", "") or ""
+                            if query_lower in exp_company.lower():
+                                score += 80
+                                break  # Count once per resume
+
+                    # Check current title (medium-high priority)
+                    title = resume.get("title", "") or ""
+                    if query_lower in title.lower():
+                        score += 50
+
+                    # Check name (medium priority)
+                    name = resume.get("name", "") or ""
+                    if query_lower in name.lower():
+                        score += 30
+
+                    # Check raw_text as fallback (low priority)
+                    raw_text = resume.get("raw_text", "") or ""
+                    if query_lower in raw_text.lower():
+                        score += 10
+
+                    # Only include resumes that match
+                    if score > 0:
+                        scored_results.append((score, resume))
+
+                # Sort by score (highest first), then by created_at
+                scored_results.sort(key=lambda x: (x[0], x[1].get("created_at", "")), reverse=True)
+                all_results = [resume for score, resume in scored_results]
 
             # Filter by skills in Python (case-insensitive matching)
             if skills:
