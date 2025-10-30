@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from api.routes import resumes, subscriptions, user_resume, anonymizer
+from api.routes import resumes, subscriptions, user_resume, anonymizer, review
 from api.routes.webhooks import clerk, stripe
 
 # Initialize FastAPI app
@@ -49,6 +49,7 @@ app.include_router(resumes.router, prefix="/api/resumes", tags=["resumes"])
 app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["subscriptions"])
 app.include_router(user_resume.router, prefix="/api/user-resume", tags=["user-resume"])
 app.include_router(anonymizer.router, prefix="/api/anonymizer", tags=["anonymizer"])
+app.include_router(review.router, prefix="/api/review", tags=["review"])
 
 # Webhooks
 app.include_router(clerk.router, prefix="/api/webhooks", tags=["webhooks"])

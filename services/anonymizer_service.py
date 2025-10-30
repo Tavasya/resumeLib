@@ -350,6 +350,84 @@ Text:
             "flags": 0
         }
 
+    def _add_watermark(self, doc, watermark_text: str = "Anonymized by cookedcareer.com") -> None:
+        """
+        Add watermark to all pages of the PDF
+
+        Args:
+            doc: PyMuPDF document object (modified in place)
+            watermark_text: Text to use for watermark (default: "Anonymized by cookedcareer.com")
+        """
+        for page in doc:
+            # Get page dimensions
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+
+            # Use light gray color for watermark
+            text_color = (0.7, 0.7, 0.7)  # Medium-light gray
+
+            # Font size - small but visible
+            font_size = 10
+
+            # Position at bottom center of page
+            # Leave some margin from the bottom
+            margin_bottom = 20
+            y_position = page_height - margin_bottom
+
+            # Calculate text width to center it
+            text_width = fitz.get_text_length(watermark_text, fontname="hebo", fontsize=font_size)
+            x_position = (page_width - text_width) / 2
+
+            # Insert text at bottom center
+            insert_point = fitz.Point(x_position, y_position)
+
+            page.insert_text(
+                insert_point,
+                watermark_text,
+                fontname="hebo",  # Helvetica Bold
+                fontsize=font_size,
+                color=text_color
+            )
+
+    def add_watermark_to_pdf(
+        self,
+        pdf_bytes: bytes,
+        watermark_text: str = "Processed by cookedcareer.com"
+    ) -> Dict[str, Any]:
+        """
+        Add watermark to a PDF (public method for reuse)
+
+        Args:
+            pdf_bytes: PDF file content as bytes
+            watermark_text: Text to use for watermark
+
+        Returns:
+            Dictionary with success status and PDF bytes with watermark, or error
+        """
+        try:
+            # Open PDF from bytes
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+            # Add watermark
+            self._add_watermark(doc, watermark_text)
+
+            # Save to buffer
+            pdf_buffer = io.BytesIO()
+            doc.save(pdf_buffer)
+            doc.close()
+
+            return {
+                "success": True,
+                "pdf_bytes": pdf_buffer.getvalue()
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     def generate_anonymized_pdf(
         self,
         pdf_bytes: bytes,
@@ -444,6 +522,9 @@ Text:
                     # No replacement text - just black out (redact) the area
                     page.add_redact_annot(rect, fill=(0, 0, 0))  # Black fill
                     page.apply_redactions()
+
+            # Add watermark to all pages
+            self._add_watermark(doc)
 
             # Save to buffer
             pdf_buffer = io.BytesIO()
