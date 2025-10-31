@@ -10,11 +10,10 @@ from models.review import (
     SubmitReviewResponse,
     ListReviewSubmissionsResponse,
     GetSubmissionResponse,
-    UpdateReviewedFileRequest,
-    UpdateReviewedFileResponse,
     DeleteSubmissionResponse,
     ReviewSubmissionSummary,
-    SubmissionDetail
+    SubmissionDetail,
+    CompleteSubmissionResponse
 )
 
 router = APIRouter()
@@ -149,23 +148,25 @@ async def get_submission(
         raise HTTPException(500, f"Failed to get submission: {str(e)}")
 
 
-@router.post("/submissions/{submission_id}/upload-reviewed", response_model=UpdateReviewedFileResponse)
-async def upload_reviewed_file(
+@router.post("/admin/complete/{submission_id}", response_model=CompleteSubmissionResponse)
+async def complete_submission(
     submission_id: str,
     file: UploadFile = File(...),
     notes: str = None
 ):
     """
-    Upload the manually reviewed resume file
-    (Admin/reviewer endpoint - no auth check for simplicity, you'll manually call this)
+    Admin endpoint: Upload reviewed resume and mark submission as completed
+
+    No authentication required - this is for internal admin use only.
+    You can add auth later if needed.
 
     Args:
-        submission_id: UUID of the submission
-        file: Reviewed PDF file
-        notes: Optional reviewer notes
+        submission_id: UUID of the submission to complete
+        file: Reviewed PDF file (will be watermarked automatically)
+        notes: Optional reviewer notes for the user
 
     Returns:
-        UpdateReviewedFileResponse with reviewed file URL
+        CompleteSubmissionResponse with success status and reviewed file URL
     """
     try:
         # Validate PDF
@@ -175,12 +176,13 @@ async def upload_reviewed_file(
         # Read file content
         file_content = await file.read()
 
-        print(f"📤 Uploading reviewed file:")
+        print(f"📤 Completing submission:")
         print(f"   Submission ID: {submission_id}")
         print(f"   File size: {len(file_content)} bytes")
+        print(f"   Notes: {notes or 'None'}")
 
-        # Upload reviewed file
-        result = review_service.update_reviewed_file(
+        # Complete the submission
+        result = review_service.complete_submission(
             submission_id=submission_id,
             reviewed_file_content=file_content,
             notes=notes
@@ -189,21 +191,21 @@ async def upload_reviewed_file(
         if not result["success"]:
             if "not found" in result.get("error", "").lower():
                 raise HTTPException(404, "Submission not found")
-            raise HTTPException(500, result.get("error", "Failed to upload reviewed file"))
+            raise HTTPException(500, result.get("error", "Failed to complete submission"))
 
-        print(f"✅ Reviewed file uploaded successfully")
+        print(f"✅ Submission completed successfully")
 
-        return UpdateReviewedFileResponse(
+        return CompleteSubmissionResponse(
             success=True,
             reviewed_file_url=result["reviewed_file_url"],
-            message="Reviewed file uploaded successfully"
+            message="Submission completed and reviewed file uploaded successfully"
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error uploading reviewed file: {e}")
-        raise HTTPException(500, f"Failed to upload reviewed file: {str(e)}")
+        print(f"❌ Error completing submission: {e}")
+        raise HTTPException(500, f"Failed to complete submission: {str(e)}")
 
 
 @router.delete("/submissions/{submission_id}", response_model=DeleteSubmissionResponse)

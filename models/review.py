@@ -73,6 +73,14 @@ class UpdateReviewedFileResponse(BaseModel):
     error: Optional[str] = None
 
 
+class CompleteSubmissionResponse(BaseModel):
+    """Response from admin complete submission endpoint"""
+    success: bool
+    reviewed_file_url: Optional[str] = Field(None, description="URL to uploaded reviewed file")
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
 class DeleteSubmissionResponse(BaseModel):
     """Response from delete submission endpoint"""
     success: bool

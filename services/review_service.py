@@ -140,20 +140,19 @@ class ReviewService:
                 "error": str(e)
             }
 
-    def update_reviewed_file(
+    def complete_submission(
         self,
         submission_id: str,
         reviewed_file_content: bytes,
         notes: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Upload reviewed file and mark submission as completed
-        (This is for manual review - you upload the edited file)
+        Complete a submission by uploading reviewed file (Admin only)
 
         Args:
             submission_id: UUID of submission
             reviewed_file_content: Reviewed PDF file content as bytes
-            notes: Optional reviewer notes
+            notes: Optional reviewer notes/feedback for the user
 
         Returns:
             Dictionary with success status and reviewed_file_url
@@ -191,7 +190,7 @@ class ReviewService:
             reviewed_storage_path = f"{user_id}/{submission_id}_reviewed.pdf"
 
             # Upload reviewed file with watermark
-            response = supabase.storage.from_(self.bucket_name).upload(
+            supabase.storage.from_(self.bucket_name).upload(
                 path=reviewed_storage_path,
                 file=watermarked_content,
                 file_options={"content-type": "application/pdf", "upsert": "true"}
