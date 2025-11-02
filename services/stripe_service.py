@@ -266,6 +266,94 @@ class StripeService:
             logger.error(f"Error handling subscription deleted: {str(e)}")
             raise
 
+    def create_review_checkout_session(
+        self,
+        submission_id: str,
+        clerk_user_id: str,
+        email: str
+    ) -> Dict[str, str]:
+        """
+        Create a Stripe checkout session for Resume Review one-time payment
+
+        Args:
+            submission_id: UUID of the review submission
+            clerk_user_id: Clerk user ID
+            email: User email
+
+        Returns:
+            dict: Contains checkout_url and session_id
+        """
+        try:
+            # Get or create Stripe customer
+            customer_id = self.get_or_create_customer(clerk_user_id, email)
+
+            # Construct redirect URLs
+            success_url = f"{settings.FRONTEND_URL}/resume-review/{submission_id}?payment=success&session_id={{CHECKOUT_SESSION_ID}}"
+            cancel_url = f"{settings.FRONTEND_URL}/resume-review/{submission_id}?payment=cancelled"
+
+            print(f"💳 Creating review checkout session:")
+            print(f"   Submission ID: {submission_id}")
+            print(f"   Success URL: {success_url}")
+            print(f"   Cancel URL: {cancel_url}")
+
+            # Create one-time payment checkout session
+            checkout_session = stripe.checkout.Session.create(
+                customer=customer_id,
+                payment_method_types=["card"],
+                line_items=[
+                    {
+                        "price": settings.STRIPE_REVIEW_PRICE_ID,
+                        "quantity": 1,
+                    }
+                ],
+                mode="payment",  # One-time payment (not subscription)
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={
+                    "clerk_user_id": clerk_user_id,
+                    "submission_id": submission_id,
+                    "type": "resume_review",  # Distinguish from subscription payments
+                },
+            )
+
+            print(f"✅ Checkout session created:")
+            print(f"   Session ID: {checkout_session.id}")
+            print(f"   Checkout URL: {checkout_session.url}")
+
+            return {
+                "checkout_url": checkout_session.url,
+                "session_id": checkout_session.id
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating review checkout session: {str(e)}")
+            raise
+
+    def handle_review_payment_success(self, session: Dict) -> None:
+        """
+        Handle successful review payment
+
+        Args:
+            session: Stripe checkout session object
+        """
+        try:
+            submission_id = session["metadata"]["submission_id"]
+            payment_intent_id = session.get("payment_intent")
+
+            # Update review submission as paid
+            supabase.table("review_submissions").update({
+                "paid": True,
+                "stripe_session_id": session["id"],
+                "stripe_payment_intent_id": payment_intent_id,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", submission_id).execute()
+
+            logger.info(f"Marked review submission {submission_id} as paid")
+
+        except Exception as e:
+            logger.error(f"Error handling review payment success: {str(e)}")
+            raise
+
 
 # Global service instance
 stripe_service = StripeService()

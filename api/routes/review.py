@@ -2,10 +2,11 @@
 Review API routes
 Handles resume submission for manual review
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 
-from api.auth import get_user_id
+from api.auth import get_user_id, verify_clerk_token
 from services.review_service import review_service
+from services.stripe_service import stripe_service
 from models.review import (
     SubmitReviewResponse,
     ListReviewSubmissionsResponse,
@@ -13,7 +14,14 @@ from models.review import (
     DeleteSubmissionResponse,
     ReviewSubmissionSummary,
     SubmissionDetail,
-    CompleteSubmissionResponse
+    CompleteSubmissionResponse,
+    CompleteReviewRequest,
+    CreateAnnotationRequest,
+    CreateAnnotationResponse,
+    GetAnnotationsResponse,
+    DeleteAnnotationResponse,
+    AnnotationDetail,
+    CreateReviewCheckoutResponse
 )
 
 router = APIRouter()
@@ -151,41 +159,36 @@ async def get_submission(
 @router.post("/admin/complete/{submission_id}", response_model=CompleteSubmissionResponse)
 async def complete_submission(
     submission_id: str,
-    file: UploadFile = File(...),
-    notes: str = None
+    request: CompleteReviewRequest
 ):
     """
-    Admin endpoint: Upload reviewed resume and mark submission as completed
+    Admin endpoint: Generate reviewed PDF from annotations and mark submission as completed
+
+    This endpoint generates the reviewed PDF by:
+    1. Fetching all annotations for the submission
+    2. Downloading the original PDF
+    3. Burning annotations (highlights + comments) into the PDF
+    4. Uploading the generated PDF with watermark
 
     No authentication required - this is for internal admin use only.
     You can add auth later if needed.
 
     Args:
         submission_id: UUID of the submission to complete
-        file: Reviewed PDF file (will be watermarked automatically)
-        notes: Optional reviewer notes for the user
+        request: CompleteReviewRequest with optional notes
 
     Returns:
         CompleteSubmissionResponse with success status and reviewed file URL
     """
     try:
-        # Validate PDF
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(400, "Only PDF files are supported")
-
-        # Read file content
-        file_content = await file.read()
-
         print(f"📤 Completing submission:")
         print(f"   Submission ID: {submission_id}")
-        print(f"   File size: {len(file_content)} bytes")
-        print(f"   Notes: {notes or 'None'}")
+        print(f"   Notes: {request.notes or 'None'}")
 
-        # Complete the submission
+        # Complete the submission (generates PDF from annotations)
         result = review_service.complete_submission(
             submission_id=submission_id,
-            reviewed_file_content=file_content,
-            notes=notes
+            notes=request.notes
         )
 
         if not result["success"]:
@@ -198,7 +201,7 @@ async def complete_submission(
         return CompleteSubmissionResponse(
             success=True,
             reviewed_file_url=result["reviewed_file_url"],
-            message="Submission completed and reviewed file uploaded successfully"
+            message="Submission completed and reviewed file generated successfully"
         )
 
     except HTTPException:
@@ -241,3 +244,198 @@ async def delete_submission(
     except Exception as e:
         print(f"❌ Error deleting submission: {e}")
         raise HTTPException(500, f"Failed to delete submission: {str(e)}")
+
+
+# Annotation Endpoints
+
+@router.post("/admin/annotations", response_model=CreateAnnotationResponse)
+async def create_annotation(
+    request: CreateAnnotationRequest
+):
+    """
+    Admin endpoint: Create an annotation for a submission
+
+    No authentication required - this is for internal admin use only.
+    You can add auth later if needed.
+
+    Args:
+        request: CreateAnnotationRequest with annotation details
+
+    Returns:
+        CreateAnnotationResponse with created annotation
+    """
+    try:
+        print(f"📝 Creating annotation:")
+        print(f"   Submission ID: {request.submission_id}")
+        print(f"   Type: {request.annotation_type}")
+        print(f"   Page: {request.page_number}")
+
+        # Create the annotation
+        result = review_service.create_annotation(
+            submission_id=request.submission_id,
+            annotation_type=request.annotation_type,
+            page_number=request.page_number,
+            position=request.position.model_dump(),
+            content=request.content.model_dump()
+        )
+
+        if not result["success"]:
+            if "not found" in result.get("error", "").lower():
+                raise HTTPException(404, result.get("error", "Submission not found"))
+            raise HTTPException(400, result.get("error", "Failed to create annotation"))
+
+        print(f"✅ Annotation created successfully: {result['annotation']['id']}")
+
+        annotation = AnnotationDetail(**result["annotation"])
+
+        return CreateAnnotationResponse(
+            success=True,
+            annotation=annotation
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error creating annotation: {e}")
+        raise HTTPException(500, f"Failed to create annotation: {str(e)}")
+
+
+@router.get("/submissions/{submission_id}/annotations", response_model=GetAnnotationsResponse)
+async def get_annotations(
+    submission_id: str,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Get all annotations for a submission
+
+    Args:
+        submission_id: UUID of the submission
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        GetAnnotationsResponse with list of annotations
+    """
+    try:
+        # Get annotations (with user ownership check)
+        result = review_service.get_annotations(submission_id, user_id)
+
+        if not result["success"]:
+            if "not found" in result.get("error", "").lower() or "access denied" in result.get("error", "").lower():
+                raise HTTPException(404, result.get("error", "Submission not found"))
+            raise HTTPException(500, result.get("error", "Failed to get annotations"))
+
+        # Convert to Pydantic models
+        annotations = [
+            AnnotationDetail(**annotation)
+            for annotation in result["annotations"]
+        ]
+
+        return GetAnnotationsResponse(
+            success=True,
+            annotations=annotations
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting annotations: {e}")
+        raise HTTPException(500, f"Failed to get annotations: {str(e)}")
+
+
+@router.delete("/admin/annotations/{annotation_id}", response_model=DeleteAnnotationResponse)
+async def delete_annotation(
+    annotation_id: str
+):
+    """
+    Admin endpoint: Delete an annotation
+
+    No authentication required - this is for internal admin use only.
+    You can add auth later if needed.
+
+    Args:
+        annotation_id: UUID of the annotation to delete
+
+    Returns:
+        DeleteAnnotationResponse with success status
+    """
+    try:
+        print(f"🗑️  Deleting annotation: {annotation_id}")
+
+        result = review_service.delete_annotation(annotation_id)
+
+        if not result["success"]:
+            raise HTTPException(500, result.get("error", "Failed to delete annotation"))
+
+        print(f"✅ Annotation deleted successfully")
+
+        return DeleteAnnotationResponse(
+            success=True,
+            message="Annotation deleted successfully"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error deleting annotation: {e}")
+        raise HTTPException(500, f"Failed to delete annotation: {str(e)}")
+
+
+# Payment Endpoints
+
+@router.post("/create-checkout/{submission_id}", response_model=CreateReviewCheckoutResponse)
+async def create_review_checkout(
+    submission_id: str,
+    request: Request
+):
+    """
+    Create a Stripe checkout session for a resume review payment
+
+    Supports two payment flows:
+    1. Upfront payment: User pays before review is completed (status = pending)
+    2. Post-review payment: User pays after review is completed (status = completed)
+
+    Requires authentication. User must own the submission.
+
+    Args:
+        submission_id: UUID of the submission to pay for
+        request: FastAPI Request object for authentication
+
+    Returns:
+        CreateReviewCheckoutResponse with checkout URL and session ID
+    """
+    try:
+        # Verify user authentication
+        user = await verify_clerk_token(request)
+        user_id = user.get("id")
+        email = user.get("email_addresses", [{}])[0].get("email_address")
+
+        # Verify user owns this submission
+        submission = review_service.get_submission(submission_id, user_id)
+
+        if not submission["success"]:
+            raise HTTPException(404, "Submission not found or access denied")
+
+        submission_data = submission["submission"]
+
+        # Allow payment for both pending (upfront) and completed (post-review) submissions
+        # Just verify not already paid
+        if submission_data.get("paid", False):
+            raise HTTPException(400, "Review has already been paid for")
+
+        # Create Stripe checkout session
+        result = stripe_service.create_review_checkout_session(
+            submission_id=submission_id,
+            clerk_user_id=user_id,
+            email=email
+        )
+
+        return CreateReviewCheckoutResponse(
+            success=True,
+            checkout_url=result["checkout_url"],
+            session_id=result["session_id"]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to create checkout session: {str(e)}")

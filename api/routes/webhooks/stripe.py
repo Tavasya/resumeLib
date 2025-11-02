@@ -49,30 +49,26 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None, 
     logger.info(f"Received Stripe webhook event: {event_type}")
 
     try:
-        print(f"🔔 WEBHOOK RECEIVED: {event_type}")
-        print(f"📦 Data object: {data_object}")
-
         if event_type == "checkout.session.completed":
-            # Payment succeeded, activate subscription
-            print("💳 Processing checkout.session.completed")
-            stripe_service.handle_checkout_completed(data_object)
-            print("✅ Checkout completed handler finished")
+            # Payment succeeded - determine if subscription or review payment
+            # Check metadata to determine payment type
+            payment_type = data_object.get("metadata", {}).get("type", "subscription")
+
+            if payment_type == "resume_review":
+                stripe_service.handle_review_payment_success(data_object)
+            else:
+                stripe_service.handle_checkout_completed(data_object)
 
         elif event_type == "customer.subscription.updated":
             # Subscription status changed (e.g., renewed, past_due)
-            print("🔄 Processing customer.subscription.updated")
             stripe_service.handle_subscription_updated(data_object)
-            print("✅ Subscription updated handler finished")
 
         elif event_type == "customer.subscription.deleted":
             # Subscription canceled or expired
-            print("❌ Processing customer.subscription.deleted")
             stripe_service.handle_subscription_deleted(data_object)
-            print("✅ Subscription deleted handler finished")
 
         else:
             logger.warning(f"Unhandled Stripe event type: {event_type}")
-            print(f"⚠️ Unhandled event type: {event_type}")
 
         return {"success": True, "message": f"Processed {event_type}"}
 

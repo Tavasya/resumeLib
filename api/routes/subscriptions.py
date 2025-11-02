@@ -90,28 +90,17 @@ async def get_subscription_status(request: Request):
         dict: Subscription tier, status, and expiration details
     """
     try:
-        print("=== GET /status called ===")
         user = await verify_clerk_token(request)
-        print(f"User authenticated: {user}")
-
         user_id = user.get("id")
-        print(f"User ID: {user_id}")
-
         result = stripe_service.get_subscription_status(user_id)
-        print(f"Subscription status result: {result}")
-
         return result
 
     except ValueError as e:
-        print(f"ValueError in /status: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
     except Exception as e:
-        print(f"Exception in /status: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get subscription status: {str(e)}"

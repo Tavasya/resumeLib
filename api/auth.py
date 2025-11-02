@@ -30,19 +30,10 @@ async def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
         dict or None: Decoded JWT claims (includes "sub" for user ID)
     """
     try:
-        print(f"=== get_current_user called ===")
-        print(f"Headers: {dict(request.headers)}")
-
         credentials = await clerk_auth_guard(request)
-        print(f"Credentials: {credentials}")
-        print(f"Decoded: {credentials.decoded if credentials else None}")
-
         if credentials and credentials.decoded:
             return credentials.decoded
     except Exception as e:
-        print(f"Auth exception: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return None
 
     return None

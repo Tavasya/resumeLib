@@ -2,10 +2,11 @@
 Service for managing resume review submissions
 """
 import uuid
+import requests
 from typing import Dict, Any, Optional
 from datetime import datetime
 from config import supabase
-from services.anonymizer_service import anonymizer_service
+from services.pdf_service import pdf_service
 
 
 class ReviewService:
@@ -85,7 +86,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at")\
+                .select("id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid")\
                 .eq("user_id", user_id)\
                 .order("created_at", desc=True)\
                 .execute()
@@ -117,7 +118,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("*")\
+                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id")\
                 .eq("id", submission_id)\
                 .eq("user_id", user_id)\
                 .single()\
@@ -143,24 +144,22 @@ class ReviewService:
     def complete_submission(
         self,
         submission_id: str,
-        reviewed_file_content: bytes,
         notes: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Complete a submission by uploading reviewed file (Admin only)
+        Complete a submission by generating PDF from annotations (Admin only)
 
         Args:
             submission_id: UUID of submission
-            reviewed_file_content: Reviewed PDF file content as bytes
             notes: Optional reviewer notes/feedback for the user
 
         Returns:
             Dictionary with success status and reviewed_file_url
         """
         try:
-            # Get submission to find user_id
+            # 1. Get submission details
             result = supabase.table("review_submissions")\
-                .select("user_id, storage_path")\
+                .select("user_id, storage_path, file_url")\
                 .eq("id", submission_id)\
                 .single()\
                 .execute()
@@ -172,34 +171,50 @@ class ReviewService:
                 }
 
             user_id = result.data["user_id"]
+            original_file_url = result.data["file_url"]
 
-            # Add watermark to reviewed file
-            watermark_result = anonymizer_service.add_watermark_to_pdf(
-                reviewed_file_content,
+            # 2. Get all annotations for this submission
+            annotations_result = supabase.table("review_annotations")\
+                .select("page_number, position, content, annotation_type")\
+                .eq("submission_id", submission_id)\
+                .order("created_at", desc=False)\
+                .execute()
+
+            annotations = annotations_result.data or []
+
+            # 3. Download original PDF
+            response = requests.get(original_file_url)
+            response.raise_for_status()
+            original_pdf_bytes = response.content
+
+            # 4. Generate PDF with annotations burned in
+            pdf_result = pdf_service.generate_annotated_pdf(
+                pdf_bytes=original_pdf_bytes,
+                annotations=annotations,
                 watermark_text="Reviewed by cookedcareer.com"
             )
 
-            if not watermark_result["success"]:
-                print(f"⚠️ Warning: Failed to add watermark: {watermark_result.get('error')}")
-                # Continue with original file if watermark fails
-                watermarked_content = reviewed_file_content
-            else:
-                watermarked_content = watermark_result["pdf_bytes"]
+            if not pdf_result["success"]:
+                return {
+                    "success": False,
+                    "error": f"Failed to generate annotated PDF: {pdf_result.get('error')}"
+                }
 
-            # Create storage path for reviewed file
+            reviewed_pdf_bytes = pdf_result["pdf_bytes"]
+
+            # 5. Upload the generated PDF to storage
             reviewed_storage_path = f"{user_id}/{submission_id}_reviewed.pdf"
 
-            # Upload reviewed file with watermark
             supabase.storage.from_(self.bucket_name).upload(
                 path=reviewed_storage_path,
-                file=watermarked_content,
+                file=reviewed_pdf_bytes,
                 file_options={"content-type": "application/pdf", "upsert": "true"}
             )
 
             # Get public URL
             reviewed_file_url = supabase.storage.from_(self.bucket_name).get_public_url(reviewed_storage_path)
 
-            # Update submission record
+            # 6. Update submission record
             update_data = {
                 "status": "completed",
                 "reviewed_file_url": reviewed_file_url,
@@ -278,6 +293,153 @@ class ReviewService:
             return {
                 "success": True,
                 "message": "Submission deleted successfully"
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def create_annotation(
+        self,
+        submission_id: str,
+        annotation_type: str,
+        page_number: int,
+        position: Dict[str, Any],
+        content: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Create an annotation for a submission (Admin only)
+
+        Args:
+            submission_id: UUID of submission
+            annotation_type: Type of annotation ('highlight', 'area', or 'drawing')
+            page_number: Page number (0-indexed)
+            position: Position data as dict
+            content: Content data as dict
+
+        Returns:
+            Dictionary with success status and annotation details
+        """
+        try:
+            # Validate annotation type
+            if annotation_type not in ['highlight', 'area', 'drawing']:
+                return {
+                    "success": False,
+                    "error": "Invalid annotation type. Must be 'highlight', 'area', or 'drawing'"
+                }
+
+            # Verify submission exists
+            result = supabase.table("review_submissions")\
+                .select("id")\
+                .eq("id", submission_id)\
+                .single()\
+                .execute()
+
+            if not result.data:
+                return {
+                    "success": False,
+                    "error": "Submission not found"
+                }
+
+            # Generate unique annotation ID
+            annotation_id = str(uuid.uuid4())
+
+            # Create annotation record
+            annotation_data = {
+                "id": annotation_id,
+                "submission_id": submission_id,
+                "annotation_type": annotation_type,
+                "page_number": page_number,
+                "position": position,
+                "content": content,
+                "created_at": datetime.utcnow().isoformat()
+            }
+
+            result = supabase.table("review_annotations")\
+                .insert(annotation_data)\
+                .execute()
+
+            return {
+                "success": True,
+                "annotation": annotation_data
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_annotations(self, submission_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get all annotations for a submission
+
+        Args:
+            submission_id: UUID of submission
+            user_id: Optional user_id for authorization check (if provided, verifies ownership)
+
+        Returns:
+            Dictionary with success status and list of annotations
+        """
+        try:
+            # If user_id provided, verify they own this submission
+            if user_id:
+                result = supabase.table("review_submissions")\
+                    .select("id")\
+                    .eq("id", submission_id)\
+                    .eq("user_id", user_id)\
+                    .single()\
+                    .execute()
+
+                if not result.data:
+                    return {
+                        "success": False,
+                        "error": "Submission not found or access denied"
+                    }
+
+            # Get all annotations for this submission
+            result = supabase.table("review_annotations")\
+                .select("id, submission_id, annotation_type, page_number, position, content, created_at")\
+                .eq("submission_id", submission_id)\
+                .order("created_at", desc=False)\
+                .execute()
+
+            annotations = result.data or []
+
+            return {
+                "success": True,
+                "annotations": annotations
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "annotations": []
+            }
+
+    def delete_annotation(self, annotation_id: str) -> Dict[str, Any]:
+        """
+        Delete an annotation (Admin only)
+
+        Args:
+            annotation_id: UUID of annotation to delete
+
+        Returns:
+            Dictionary with success status
+        """
+        try:
+            # Delete annotation
+            result = supabase.table("review_annotations")\
+                .delete()\
+                .eq("id", annotation_id)\
+                .execute()
+
+            return {
+                "success": True,
+                "message": "Annotation deleted successfully"
             }
 
         except Exception as e:
