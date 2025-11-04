@@ -105,6 +105,33 @@ class ReviewService:
                 "submissions": []
             }
 
+    def list_all_submissions(self) -> Dict[str, Any]:
+        """
+        List all review submissions from all users (Admin only)
+
+        Returns:
+            Dictionary with success status and list of all submissions
+        """
+        try:
+            result = supabase.table("review_submissions")\
+                .select("id, user_id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid")\
+                .order("created_at", desc=True)\
+                .execute()
+
+            submissions = result.data or []
+
+            return {
+                "success": True,
+                "submissions": submissions
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "submissions": []
+            }
+
     def get_submission(self, submission_id: str, user_id: str) -> Dict[str, Any]:
         """
         Get details of a single submission

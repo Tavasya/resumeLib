@@ -119,6 +119,57 @@ async def list_submissions(
         raise HTTPException(500, f"Failed to list submissions: {str(e)}")
 
 
+@router.get("/admin/submissions", response_model=ListReviewSubmissionsResponse)
+async def list_all_submissions(
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Admin endpoint: List all review submissions from all users
+
+    Only accessible by admin user: 2bcabe8f-73c9-4f14-8fd0-a0d2310443a0
+
+    Args:
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        ListReviewSubmissionsResponse with list of all submissions
+    """
+    # Check if user is admin
+    ADMIN_USER_IDS = [
+        "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
+        "user_34N6arMDMuOBtMo1OivYVsc1VuP"
+    ]
+    print(f"🔐 Admin endpoint accessed by user_id: {user_id}")
+    print(f"🔑 Expected admin user_ids: {ADMIN_USER_IDS}")
+    print(f"✅ Match: {user_id in ADMIN_USER_IDS}")
+
+    if user_id not in ADMIN_USER_IDS:
+        raise HTTPException(403, "Access denied. Admin privileges required.")
+
+    try:
+        result = review_service.list_all_submissions()
+
+        if not result["success"]:
+            raise HTTPException(500, result.get("error", "Failed to list submissions"))
+
+        # Convert to Pydantic models
+        submissions = [
+            ReviewSubmissionSummary(**submission)
+            for submission in result["submissions"]
+        ]
+
+        return ListReviewSubmissionsResponse(
+            success=True,
+            submissions=submissions
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error listing submissions: {e}")
+        raise HTTPException(500, f"Failed to list submissions: {str(e)}")
+
+
 @router.get("/submissions/{submission_id}", response_model=GetSubmissionResponse)
 async def get_submission(
     submission_id: str,

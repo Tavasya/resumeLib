@@ -22,6 +22,7 @@ class SubmitReviewResponse(BaseModel):
 class ReviewSubmissionSummary(BaseModel):
     """Summary of a review submission for list view"""
     id: str = Field(..., description="Submission UUID")
+    user_id: Optional[str] = Field(None, description="User's Clerk ID (only included in admin endpoints)")
     filename: str = Field(..., description="Original filename")
     status: str = Field(..., description="Status: 'pending' or 'completed'")
     file_url: str = Field(..., description="URL to submitted file")
