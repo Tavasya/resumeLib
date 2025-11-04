@@ -168,6 +168,40 @@ class ReviewService:
                 "error": str(e)
             }
 
+    def get_submission_admin(self, submission_id: str) -> Dict[str, Any]:
+        """
+        Get details of a single submission (Admin only - no ownership check)
+
+        Args:
+            submission_id: UUID of submission
+
+        Returns:
+            Dictionary with success status and submission details
+        """
+        try:
+            result = supabase.table("review_submissions")\
+                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id")\
+                .eq("id", submission_id)\
+                .single()\
+                .execute()
+
+            if not result.data:
+                return {
+                    "success": False,
+                    "error": "Submission not found"
+                }
+
+            return {
+                "success": True,
+                "submission": result.data
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     def complete_submission(
         self,
         submission_id: str,

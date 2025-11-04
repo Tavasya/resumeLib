@@ -207,6 +207,54 @@ async def get_submission(
         raise HTTPException(500, f"Failed to get submission: {str(e)}")
 
 
+@router.get("/admin/submissions/{submission_id}", response_model=GetSubmissionResponse)
+async def get_submission_admin(
+    submission_id: str,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Admin endpoint: Get details of any submission without ownership check
+
+    Only accessible by admin users
+
+    Args:
+        submission_id: UUID of the submission
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        GetSubmissionResponse with submission details
+    """
+    # Check if user is admin
+    ADMIN_USER_IDS = [
+        "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
+        "user_34N6arMDMuOBtMo1OivYVsc1VuP"
+    ]
+
+    if user_id not in ADMIN_USER_IDS:
+        raise HTTPException(403, "Access denied. Admin privileges required.")
+
+    try:
+        result = review_service.get_submission_admin(submission_id)
+
+        if not result["success"]:
+            if "not found" in result.get("error", "").lower():
+                raise HTTPException(404, "Submission not found")
+            raise HTTPException(500, result.get("error", "Failed to get submission"))
+
+        submission = SubmissionDetail(**result["submission"])
+
+        return GetSubmissionResponse(
+            success=True,
+            submission=submission
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting submission: {e}")
+        raise HTTPException(500, f"Failed to get submission: {str(e)}")
+
+
 @router.post("/admin/complete/{submission_id}", response_model=CompleteSubmissionResponse)
 async def complete_submission(
     submission_id: str,
@@ -373,6 +421,57 @@ async def get_annotations(
         if not result["success"]:
             if "not found" in result.get("error", "").lower() or "access denied" in result.get("error", "").lower():
                 raise HTTPException(404, result.get("error", "Submission not found"))
+            raise HTTPException(500, result.get("error", "Failed to get annotations"))
+
+        # Convert to Pydantic models
+        annotations = [
+            AnnotationDetail(**annotation)
+            for annotation in result["annotations"]
+        ]
+
+        return GetAnnotationsResponse(
+            success=True,
+            annotations=annotations
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error getting annotations: {e}")
+        raise HTTPException(500, f"Failed to get annotations: {str(e)}")
+
+
+@router.get("/admin/submissions/{submission_id}/annotations", response_model=GetAnnotationsResponse)
+async def get_annotations_admin(
+    submission_id: str,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Admin endpoint: Get all annotations for any submission without ownership check
+
+    Only accessible by admin users
+
+    Args:
+        submission_id: UUID of the submission
+        user_id: Authenticated user ID from Clerk JWT
+
+    Returns:
+        GetAnnotationsResponse with list of annotations
+    """
+    # Check if user is admin
+    ADMIN_USER_IDS = [
+        "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
+        "user_34N6arMDMuOBtMo1OivYVsc1VuP"
+    ]
+
+    if user_id not in ADMIN_USER_IDS:
+        raise HTTPException(403, "Access denied. Admin privileges required.")
+
+    try:
+        # Get annotations (without ownership check)
+        result = review_service.get_annotations(submission_id, user_id=None)
+
+        if not result["success"]:
             raise HTTPException(500, result.get("error", "Failed to get annotations"))
 
         # Convert to Pydantic models
