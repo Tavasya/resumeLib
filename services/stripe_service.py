@@ -152,7 +152,7 @@ class StripeService:
             print(f"📊 Getting subscription status for user: {clerk_user_id}")
 
             result = supabase.table("users")\
-                .select("subscription_tier, subscription_status, subscription_end_date, user_resume_url")\
+                .select("subscription_tier, subscription_status, subscription_end_date")\
                 .eq("clerk_user_id", clerk_user_id)\
                 .single()\
                 .execute()
@@ -196,8 +196,7 @@ class StripeService:
                 "end_date": end_date,
                 "is_pro": has_pro_access,  # True if user has Pro access (paid OR trialing OR canceled but still in period)
                 "is_trialing": is_trialing,
-                "trial_end_date": end_date if is_trialing else None,
-                "user_resume_url": result.data.get("user_resume_url")
+                "trial_end_date": end_date if is_trialing else None
             }
 
             print(f"📊 Returning subscription status:")
