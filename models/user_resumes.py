@@ -18,7 +18,7 @@ class UserResumeItem(BaseModel):
     """Single user resume item"""
     id: str
     filename: str
-    file_url: str
+    file_url: Optional[str] = None
     file_type: str
     created_at: datetime
     updated_at: datetime

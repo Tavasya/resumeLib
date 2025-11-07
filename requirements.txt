@@ -2,12 +2,14 @@ annotated-types==0.7.0
 anyio==4.11.0
 attrs==25.4.0
 beautifulsoup4==4.14.2
+Brotli==1.1.0
 cachetools==6.2.1
 certifi==2025.10.5
 cffi==2.0.0
 charset-normalizer==3.4.4
 click==8.3.0
 cryptography==46.0.3
+cssselect2==0.8.0
 Deprecated==1.2.18
 deprecation==2.1.0
 distro==1.9.0
@@ -15,6 +17,7 @@ dnspython==2.8.0
 email-validator==2.3.0
 fastapi==0.119.0
 fastapi_clerk_auth==0.0.7
+fonttools==4.60.1
 google-api-core==2.26.0
 google-api-python-client==2.185.0
 google-auth==2.41.1
@@ -33,6 +36,9 @@ lxml==6.0.2
 multidict==6.7.0
 openai==2.5.0
 packaging==25.0
+pdfminer.six==20250506
+pdfplumber==0.11.7
+pillow==12.0.0
 postgrest==2.22.0
 propcache==0.4.1
 proto-plus==1.26.1
@@ -43,10 +49,13 @@ pycparser==2.23
 pydantic==2.12.3
 pydantic-settings==2.11.0
 pydantic_core==2.41.4
+pydyf==0.11.0
 PyJWT==2.10.1
 PyMuPDF==1.26.5
 pyparsing==3.2.5
 PyPDF2==3.0.1
+pypdfium2==5.0.0
+pyphen==0.17.2
 python-dateutil==2.9.0.post0
 python-docx==1.2.0
 python-dotenv==1.1.1
@@ -65,6 +74,8 @@ supabase==2.22.0
 supabase-auth==2.22.0
 supabase-functions==2.22.0
 svix==1.77.0
+tinycss2==1.4.0
+tinyhtml5==2.0.0
 tqdm==4.67.1
 types-Deprecated==1.2.15.20250304
 types-python-dateutil==2.9.0.20251008
@@ -73,6 +84,9 @@ typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.5.0
 uvicorn==0.38.0
+weasyprint==66.0
+webencodings==0.5.1
 websockets==15.0.1
 wrapt==1.17.3
 yarl==1.22.0
+zopfli==0.2.3.post1
