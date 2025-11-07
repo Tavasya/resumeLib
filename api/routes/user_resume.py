@@ -8,7 +8,7 @@ import uuid
 
 from api.auth import get_user_id
 from services.storage_service import storage_service
-from models.user_resumes import UploadResponse
+from models.user_resumes import UploadResponse, ListResumesResponse, UserResumeItem
 from config import supabase
 
 router = APIRouter()
@@ -94,6 +94,46 @@ async def upload_user_resume(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload resume: {str(e)}"
+        )
+
+
+@router.get("/list", response_model=ListResumesResponse)
+async def list_user_resumes(
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Get all resumes for the authenticated user
+
+    Returns all original resumes uploaded by the user.
+    Does NOT include reviewed or anonymized versions (use separate endpoints for those).
+
+    Args:
+        user_id: User ID from Clerk JWT (injected by dependency)
+
+    Returns:
+        ListResumesResponse with list of user's resumes
+    """
+    try:
+        # Get all resumes for this user
+        result = supabase.table("user_resumes")\
+            .select("id, filename, file_url, file_type, created_at, updated_at")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .execute()
+
+        # Convert to Pydantic models
+        resumes = [UserResumeItem(**resume) for resume in result.data]
+
+        return ListResumesResponse(
+            success=True,
+            resumes=resumes
+        )
+
+    except Exception as e:
+        print(f"Error listing resumes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list resumes: {str(e)}"
         )
 
 
