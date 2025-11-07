@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class SubmitReviewRequest(BaseModel):
     """Request to submit a resume for review"""
-    filename: str = Field(..., description="Original filename")
+    user_resume_id: str = Field(..., description="ID of user resume from user_resumes table")
 
 
 class SubmitReviewResponse(BaseModel):

@@ -8,7 +8,9 @@ import uuid
 
 from api.auth import get_user_id
 from services.anonymizer_service import anonymizer_service
+from services.storage_service import storage_service
 from models.anonymizer import (
+    DetectPIIRequest,
     DetectPIIResponse,
     PIIDetection,
     GenerateAnonymizedPDFRequest,
@@ -30,30 +32,46 @@ router = APIRouter()
 
 @router.post("/detect-pii", response_model=DetectPIIResponse)
 async def detect_pii(
-    file: UploadFile = File(...),
+    request: DetectPIIRequest,
     user_id: str = Depends(get_user_id)
 ):
     """
-    Upload PDF and detect PII locations
+    Detect PII in user's resume
 
     Returns coordinates of all detected personal information
 
     Args:
-        file: PDF file to analyze
+        request: DetectPIIRequest with user_resume_id
         user_id: Authenticated user ID from Clerk JWT
 
     Returns:
         DetectPIIResponse with detected PII and coordinates
     """
     try:
+        print(f"📄 Processing PDF for PII detection:")
+        print(f"   User Resume ID: {request.user_resume_id}")
+        print(f"   User ID: {user_id}")
+
+        # Get the user resume from database
+        resume_result = supabase.table("user_resumes")\
+            .select("id, filename, file_url, storage_path")\
+            .eq("id", request.user_resume_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
+
+        if not resume_result.data:
+            raise HTTPException(404, "Resume not found or access denied")
+
+        resume = resume_result.data
+
         # Validate PDF
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(400, "Only PDF files are supported")
+        if not resume["filename"].lower().endswith('.pdf'):
+            raise HTTPException(400, "Only PDF files are supported for anonymization")
 
-        # Read file content into memory
-        file_content = await file.read()
+        # Download the original file from storage
+        file_content = supabase.storage.from_("user-resumes").download(resume["storage_path"])
 
-        print(f"📄 Processing PDF:")
         print(f"   File size: {len(file_content)} bytes")
 
         # Process PDF from memory (no temp file needed)
@@ -65,28 +83,11 @@ async def detect_pii(
 
         print(f"✅ PII detection successful: {len(result['detections'])} detections found")
 
-        # Only upload to Supabase if processing succeeded
-        file_id = str(uuid.uuid4())
-        storage_path = f"{user_id}/anonymizer/{file_id}.pdf"
-
-        print(f"📤 Uploading PDF to Supabase:")
-        print(f"   File ID: {file_id}")
-        print(f"   Storage path: {storage_path}")
-
-        upload_result = supabase.storage.from_("anonymized-resumes").upload(
-            path=storage_path,
-            file=file_content,
-            file_options={"content-type": "application/pdf", "upsert": "true"}
-        )
-
-        print(f"✅ Upload successful")
-
-        original_url = supabase.storage.from_("anonymized-resumes").get_public_url(storage_path)
-
+        # Return using the existing user_resume_id (no new upload needed)
         return DetectPIIResponse(
             success=True,
-            file_id=file_id,
-            original_url=original_url,
+            file_id=request.user_resume_id,  # Use resume ID as file_id for consistency
+            original_url=resume["file_url"],
             detections=result["detections"],
             total_pages=result["total_pages"]
         )
@@ -124,11 +125,22 @@ async def generate_anonymized_pdf(
         GenerateAnonymizedPDFResponse with download URLs
     """
     try:
-        # Download original PDF from Supabase
-        original_path = f"{user_id}/anonymizer/{request.file_id}.pdf"
+        # Get the user resume from database (file_id is actually user_resume_id)
+        resume_result = supabase.table("user_resumes")\
+            .select("id, file_url, storage_path")\
+            .eq("id", request.file_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
 
+        if not resume_result.data:
+            raise HTTPException(404, "Resume not found or access denied")
+
+        resume = resume_result.data
+
+        # Download original PDF from user-resumes bucket
         try:
-            pdf_bytes = supabase.storage.from_("anonymized-resumes").download(original_path)
+            pdf_bytes = supabase.storage.from_("user-resumes").download(resume["storage_path"])
         except Exception as e:
             raise HTTPException(404, f"Original PDF not found: {str(e)}")
 
@@ -139,23 +151,23 @@ async def generate_anonymized_pdf(
         if not result["success"]:
             raise HTTPException(500, f"PDF generation failed: {result.get('error')}")
 
-        # Upload anonymized PDF to Supabase
-        anonymized_path = f"{user_id}/anonymizer/{request.file_id}_anonymized.pdf"
+        # Generate unique session ID for this anonymization
+        session_id = str(uuid.uuid4())
 
-        supabase.storage.from_("anonymized-resumes").upload(
-            path=anonymized_path,
-            file=result["pdf_bytes"],
-            file_options={"content-type": "application/pdf", "upsert": "true"}
+        # Upload anonymized PDF to Supabase under the resume's folder
+        anonymized_path = f"{user_id}/{request.file_id}/anonymized/{session_id}_anonymized.pdf"
+
+        anonymized_url = storage_service.upload_file(
+            bucket_name="user-resumes",
+            storage_path=anonymized_path,
+            file_content=result["pdf_bytes"],
+            content_type="application/pdf"
         )
-
-        # Get public URLs
-        anonymized_url = supabase.storage.from_("anonymized-resumes").get_public_url(anonymized_path)
-        original_url = supabase.storage.from_("anonymized-resumes").get_public_url(original_path)
 
         return GenerateAnonymizedPDFResponse(
             success=True,
             anonymized_url=anonymized_url,
-            original_url=original_url
+            original_url=resume["file_url"]
         )
 
     except HTTPException:
@@ -188,9 +200,18 @@ async def save_session(
         SaveSessionResponse with session_id
     """
     try:
-        # Get original_url from storage
-        storage_path = f"{user_id}/anonymizer/{request.file_id}.pdf"
-        original_url = supabase.storage.from_("anonymized-resumes").get_public_url(storage_path)
+        # Get the user resume from database (file_id is actually user_resume_id)
+        resume_result = supabase.table("user_resumes")\
+            .select("id, filename, file_url")\
+            .eq("id", request.file_id)\
+            .eq("user_id", user_id)\
+            .single()\
+            .execute()
+
+        if not resume_result.data:
+            raise HTTPException(404, "Resume not found or access denied")
+
+        resume = resume_result.data
 
         # Convert detections and manual_blurs to JSON
         detections_json = [d.model_dump() for d in request.detections]
@@ -205,7 +226,7 @@ async def save_session(
             # Update existing session
             session_id = existing.data[0]["id"]
             result = supabase.table("anonymizer_sessions").update({
-                "filename": request.filename,
+                "filename": resume["filename"],
                 "detections": detections_json,
                 "manual_blurs": manual_blurs_json,
                 "num_pages": request.num_pages,
@@ -214,12 +235,13 @@ async def save_session(
 
             message = "Session updated successfully"
         else:
-            # Create new session
+            # Create new session with FK link
             result = supabase.table("anonymizer_sessions").insert({
                 "user_id": user_id,
                 "file_id": request.file_id,
-                "filename": request.filename,
-                "original_url": original_url,
+                "user_resume_id": request.file_id,  # Set FK
+                "filename": resume["filename"],
+                "original_url": resume["file_url"],
                 "detections": detections_json,
                 "manual_blurs": manual_blurs_json,
                 "num_pages": request.num_pages

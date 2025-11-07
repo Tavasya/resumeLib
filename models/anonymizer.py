@@ -32,6 +32,11 @@ class PIIDetection(BaseModel):
     style: TextStyle = Field(..., description="Original text styling information")
 
 
+class DetectPIIRequest(BaseModel):
+    """Request to detect PII in a user resume"""
+    user_resume_id: str = Field(..., description="ID of user resume from user_resumes table")
+
+
 class DetectPIIResponse(BaseModel):
     """Response from PII detection endpoint"""
     success: bool

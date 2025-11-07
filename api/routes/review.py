@@ -2,12 +2,13 @@
 Review API routes
 Handles resume submission for manual review
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request
 
 from api.auth import get_user_id, verify_clerk_token
 from services.review_service import review_service
 from services.stripe_service import stripe_service
 from models.review import (
+    SubmitReviewRequest,
     SubmitReviewResponse,
     ListReviewSubmissionsResponse,
     GetSubmissionResponse,
@@ -29,37 +30,28 @@ router = APIRouter()
 
 @router.post("/submit", response_model=SubmitReviewResponse)
 async def submit_resume(
-    file: UploadFile = File(...),
+    request: SubmitReviewRequest,
     user_id: str = Depends(get_user_id)
 ):
     """
     Submit a resume for manual review
 
     Args:
-        file: PDF file to submit
+        user_resume_id: ID of the user resume to submit (from user_resumes table)
         user_id: Authenticated user ID from Clerk JWT
 
     Returns:
         SubmitReviewResponse with submission ID and file URL
     """
     try:
-        # Validate PDF
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(400, "Only PDF files are supported")
-
-        # Read file content
-        file_content = await file.read()
-
         print(f"📄 Submitting resume for review:")
-        print(f"   Filename: {file.filename}")
-        print(f"   File size: {len(file_content)} bytes")
+        print(f"   User Resume ID: {request.user_resume_id}")
         print(f"   User ID: {user_id}")
 
-        # Submit resume
-        result = review_service.submit_resume(
+        # Submit resume using resume ID
+        result = review_service.submit_resume_by_id(
             user_id=user_id,
-            filename=file.filename,
-            file_content=file_content
+            user_resume_id=request.user_resume_id
         )
 
         if not result["success"]:
