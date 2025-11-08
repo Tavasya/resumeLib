@@ -10,9 +10,8 @@ class EmailService:
     """Service for sending emails via Resend"""
 
     def __init__(self):
-        self.api_key = os.getenv("RESEND_API_KEY")
-        if self.api_key:
-            resend.api_key = self.api_key
+        self.api_key = "re_gtTviWL8_D27AxKRoXSKbDm6kKDiF2Px9"
+        resend.api_key = self.api_key
 
     def send_review_ready_email(
         self,
