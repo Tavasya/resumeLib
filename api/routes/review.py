@@ -2,7 +2,8 @@
 Review API routes
 Handles resume submission for manual review
 """
-from fastapi import APIRouter, HTTPException, Depends, Request
+from typing import Optional
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request, Form
 
 from api.auth import get_user_id, verify_clerk_token
 from services.review_service import review_service
@@ -30,28 +31,65 @@ router = APIRouter()
 
 @router.post("/submit", response_model=SubmitReviewResponse)
 async def submit_resume(
-    request: SubmitReviewRequest,
+    file: UploadFile = File(...),
+    review_context: Optional[str] = Form(None),
+    reviewer_type: str = Form("team"),
+    delivery_speed: str = Form("standard"),
+    base_price: float = Form(0.00),
+    delivery_fee: float = Form(0.00),
+    total_price: float = Form(0.00),
     user_id: str = Depends(get_user_id)
 ):
     """
     Submit a resume for manual review
 
     Args:
-        user_resume_id: ID of the user resume to submit (from user_resumes table)
+        file: PDF file to submit
+        review_context: Context for review (target roles, concerns, areas to focus)
+        reviewer_type: Type of reviewer (team, big_tech, startup, technical)
+        delivery_speed: Delivery speed (standard, express)
+        base_price: Base price for reviewer type
+        delivery_fee: Additional fee for express delivery
+        total_price: Total cost
         user_id: Authenticated user ID from Clerk JWT
 
     Returns:
         SubmitReviewResponse with submission ID and file URL
     """
     try:
-        print(f"📄 Submitting resume for review:")
-        print(f"   User Resume ID: {request.user_resume_id}")
-        print(f"   User ID: {user_id}")
+        # Validate PDF
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(400, "Only PDF files are supported")
 
-        # Submit resume using resume ID
-        result = review_service.submit_resume_by_id(
+        # Validate reviewer_type
+        if reviewer_type not in ["team", "big_tech", "startup", "technical"]:
+            raise HTTPException(400, "Invalid reviewer_type")
+
+        # Validate delivery_speed
+        if delivery_speed not in ["standard", "express"]:
+            raise HTTPException(400, "Invalid delivery_speed")
+
+        # Read file content
+        file_content = await file.read()
+
+        print(f"📄 Submitting resume for review:")
+        print(f"   File: {file.filename}")
+        print(f"   User ID: {user_id}")
+        print(f"   Reviewer Type: {reviewer_type}")
+        print(f"   Delivery Speed: {delivery_speed}")
+        print(f"   Total Price: ${total_price}")
+
+        # Submit resume
+        result = review_service.submit_resume(
             user_id=user_id,
-            user_resume_id=request.user_resume_id
+            filename=file.filename,
+            file_content=file_content,
+            review_context=review_context,
+            reviewer_type=reviewer_type,
+            delivery_speed=delivery_speed,
+            base_price=base_price,
+            delivery_fee=delivery_fee,
+            total_price=total_price
         )
 
         if not result["success"]:
