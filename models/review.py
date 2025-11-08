@@ -1,13 +1,19 @@
 """
 Pydantic models for Resume Review feature
 """
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
 
 class SubmitReviewRequest(BaseModel):
     """Request to submit a resume for review"""
     filename: str = Field(..., description="Original filename")
+    review_context: Optional[str] = Field(None, description="Context for review: target roles, concerns, areas to focus on")
+    reviewer_type: Literal["team", "big_tech", "startup", "technical"] = Field("team", description="Type of reviewer")
+    delivery_speed: Literal["standard", "express"] = Field("standard", description="Delivery speed")
+    base_price: Optional[float] = Field(0.00, description="Base price for reviewer type")
+    delivery_fee: Optional[float] = Field(0.00, description="Additional fee for express delivery")
+    total_price: Optional[float] = Field(0.00, description="Total cost")
 
 
 class SubmitReviewResponse(BaseModel):

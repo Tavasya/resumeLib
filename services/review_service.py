@@ -21,7 +21,13 @@ class ReviewService:
         self,
         user_id: str,
         filename: str,
-        file_content: bytes
+        file_content: bytes,
+        review_context: Optional[str] = None,
+        reviewer_type: str = "team",
+        delivery_speed: str = "standard",
+        base_price: float = 0.00,
+        delivery_fee: float = 0.00,
+        total_price: float = 0.00
     ) -> Dict[str, Any]:
         """
         Submit a resume for review
@@ -30,6 +36,12 @@ class ReviewService:
             user_id: Clerk user ID
             filename: Original filename
             file_content: PDF file content as bytes
+            review_context: Context for review
+            reviewer_type: Type of reviewer (team, big_tech, startup, technical)
+            delivery_speed: Delivery speed (standard, express)
+            base_price: Base price for reviewer type
+            delivery_fee: Additional fee for express delivery
+            total_price: Total cost
 
         Returns:
             Dictionary with success status, submission_id, and file_url
@@ -59,7 +71,13 @@ class ReviewService:
                 "file_url": file_url,
                 "storage_path": storage_path,
                 "status": "pending",
-                "submitted_at": datetime.utcnow().isoformat()
+                "submitted_at": datetime.utcnow().isoformat(),
+                "review_context": review_context,
+                "reviewer_type": reviewer_type,
+                "delivery_speed": delivery_speed,
+                "base_price": base_price,
+                "delivery_fee": delivery_fee,
+                "total_price": total_price
             }
 
             result = supabase.table("review_submissions").insert(submission_data).execute()
