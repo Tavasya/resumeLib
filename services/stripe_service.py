@@ -424,6 +424,50 @@ class StripeService:
             dict: Contains checkout_url and session_id
         """
         try:
+            # Fetch submission to get reviewer_type and delivery_speed
+            submission_result = supabase.table("review_submissions")\
+                .select("reviewer_type, delivery_speed")\
+                .eq("id", submission_id)\
+                .single()\
+                .execute()
+
+            if not submission_result.data:
+                raise ValueError(f"Submission {submission_id} not found")
+
+            submission = submission_result.data
+            reviewer_type = submission.get("reviewer_type", "team")
+            delivery_speed = submission.get("delivery_speed", "standard")
+
+            # Map reviewer_type to Stripe Price ID
+            reviewer_price_map = {
+                "team": None,  # Team is free, no price ID
+                "technical": settings.STRIPE_REVIEW_PRICE_TECHNICAL,
+                "startup": settings.STRIPE_REVIEW_PRICE_STARTUP,
+                "big_tech": settings.STRIPE_REVIEW_PRICE_BIG_TECH,
+            }
+
+            # Build line_items array
+            line_items = []
+
+            # Add reviewer price (if not free)
+            reviewer_price_id = reviewer_price_map.get(reviewer_type)
+            if reviewer_price_id:
+                line_items.append({
+                    "price": reviewer_price_id,
+                    "quantity": 1,
+                })
+
+            # Add express delivery if selected
+            if delivery_speed == "express":
+                line_items.append({
+                    "price": settings.STRIPE_REVIEW_PRICE_EXPRESS,
+                    "quantity": 1,
+                })
+
+            # If no line items (free review), raise error
+            if not line_items:
+                raise ValueError("Cannot create checkout for free review (total_price = $0)")
+
             # Get or create Stripe customer
             customer_id = self.get_or_create_customer(clerk_user_id, email)
 
@@ -433,6 +477,9 @@ class StripeService:
 
             print(f"💳 Creating review checkout session:")
             print(f"   Submission ID: {submission_id}")
+            print(f"   Reviewer Type: {reviewer_type}")
+            print(f"   Delivery Speed: {delivery_speed}")
+            print(f"   Line Items: {line_items}")
             print(f"   Success URL: {success_url}")
             print(f"   Cancel URL: {cancel_url}")
 
@@ -440,12 +487,7 @@ class StripeService:
             checkout_session = stripe.checkout.Session.create(
                 customer=customer_id,
                 payment_method_types=["card"],
-                line_items=[
-                    {
-                        "price": settings.STRIPE_REVIEW_PRICE_ID,
-                        "quantity": 1,
-                    }
-                ],
+                line_items=line_items,
                 mode="payment",  # One-time payment (not subscription)
                 success_url=success_url,
                 cancel_url=cancel_url,

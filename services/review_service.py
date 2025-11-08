@@ -3,11 +3,13 @@ Service for managing resume review submissions
 """
 import uuid
 import requests
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 from config import supabase
 from services.pdf_service import pdf_service
 from services.storage_service import storage_service
+from services.email_service import email_service
 
 
 class ReviewService:
@@ -20,25 +22,40 @@ class ReviewService:
         self,
         user_id: str,
         filename: str,
-        file_content: bytes
+        file_content: bytes,
+        review_context: Optional[str] = None,
+        reviewer_type: str = "team",
+        delivery_speed: str = "standard",
+        base_price: float = 0.00,
+        delivery_fee: float = 0.00,
+        total_price: float = 0.00
     ) -> Dict[str, Any]:
         """
         Submit a resume for review
+
+        This also adds the resume to the user's library for future reference.
 
         Args:
             user_id: Clerk user ID
             filename: Original filename
             file_content: PDF file content as bytes
+            review_context: Context for review
+            reviewer_type: Type of reviewer (team, big_tech, startup, technical)
+            delivery_speed: Delivery speed (standard, express)
+            base_price: Base price for reviewer type
+            delivery_fee: Additional fee for express delivery
+            total_price: Total cost
 
         Returns:
             Dictionary with success status, submission_id, and file_url
         """
         try:
-            # Generate unique submission ID
-            submission_id = str(uuid.uuid4())
+            # Generate unique IDs
+            resume_id = str(uuid.uuid4())  # For user_resumes table
+            submission_id = str(uuid.uuid4())  # For review_submissions table
 
-            # Create storage path: {user_id}/{submission_id}.pdf
-            storage_path = f"{user_id}/{submission_id}.pdf"
+            # Create storage path using library structure: {user_id}/{resume_id}/original.pdf
+            storage_path = f"{user_id}/{resume_id}/original.pdf"
 
             # Upload to user-resumes bucket using storage service
             file_url = storage_service.upload_file(
@@ -48,15 +65,37 @@ class ReviewService:
                 content_type="application/pdf"
             )
 
-            # Create database record
-            submission_data = {
-                "id": submission_id,
+            # 1. First, add to user's resume library
+            resume_data = {
+                "id": resume_id,
                 "user_id": user_id,
                 "filename": filename,
                 "file_url": file_url,
                 "storage_path": storage_path,
+                "file_type": "pdf"
+            }
+            supabase.table("user_resumes").insert(resume_data).execute()
+
+            # 2. Then, create review submission linked to the library resume
+            # Auto-mark as paid if free (no payment required)
+            is_paid = total_price == 0.0
+
+            submission_data = {
+                "id": submission_id,
+                "user_id": user_id,
+                "user_resume_id": resume_id,  # Link to user_resumes table
+                "filename": filename,
+                "file_url": file_url,
+                "storage_path": storage_path,
                 "status": "pending",
-                "submitted_at": datetime.utcnow().isoformat()
+                "submitted_at": datetime.utcnow().isoformat(),
+                "review_context": review_context,
+                "reviewer_type": reviewer_type,
+                "delivery_speed": delivery_speed,
+                "base_price": base_price,
+                "delivery_fee": delivery_fee,
+                "total_price": total_price,
+                "paid": is_paid
             }
 
             result = supabase.table("review_submissions").insert(submission_data).execute()
@@ -76,7 +115,13 @@ class ReviewService:
     def submit_resume_by_id(
         self,
         user_id: str,
-        user_resume_id: str
+        user_resume_id: str,
+        review_context: Optional[str] = None,
+        reviewer_type: str = "team",
+        delivery_speed: str = "standard",
+        base_price: float = 0.00,
+        delivery_fee: float = 0.00,
+        total_price: float = 0.00
     ) -> Dict[str, Any]:
         """
         Submit a resume for review using existing user_resume_id
@@ -84,6 +129,12 @@ class ReviewService:
         Args:
             user_id: Clerk user ID
             user_resume_id: ID of resume in user_resumes table
+            review_context: Context for review
+            reviewer_type: Type of reviewer (team, big_tech, startup, technical)
+            delivery_speed: Delivery speed (standard, express)
+            base_price: Base price for reviewer type
+            delivery_fee: Additional fee for express delivery
+            total_price: Total cost
 
         Returns:
             Dictionary with success status, submission_id, and file_url
@@ -108,6 +159,9 @@ class ReviewService:
             # Generate unique submission ID
             submission_id = str(uuid.uuid4())
 
+            # Auto-mark as paid if free (no payment required)
+            is_paid = total_price == 0.0
+
             # Create database record linking to user_resume
             submission_data = {
                 "id": submission_id,
@@ -117,7 +171,14 @@ class ReviewService:
                 "file_url": resume["file_url"],  # Reference original
                 "storage_path": resume["storage_path"],  # Reference original
                 "status": "pending",
-                "submitted_at": datetime.utcnow().isoformat()
+                "submitted_at": datetime.utcnow().isoformat(),
+                "review_context": review_context,
+                "reviewer_type": reviewer_type,
+                "delivery_speed": delivery_speed,
+                "base_price": base_price,
+                "delivery_fee": delivery_fee,
+                "total_price": total_price,
+                "paid": is_paid
             }
 
             result = supabase.table("review_submissions").insert(submission_data).execute()
@@ -146,7 +207,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid")\
+                .select("id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .eq("user_id", user_id)\
                 .order("created_at", desc=True)\
                 .execute()
@@ -174,7 +235,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, user_id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid")\
+                .select("id, user_id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .order("created_at", desc=True)\
                 .execute()
 
@@ -205,7 +266,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id")\
+                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .eq("id", submission_id)\
                 .eq("user_id", user_id)\
                 .single()\
@@ -240,7 +301,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id")\
+                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .eq("id", submission_id)\
                 .single()\
                 .execute()
@@ -361,6 +422,9 @@ class ReviewService:
                 .update(update_data)\
                 .eq("id", submission_id)\
                 .execute()
+
+            # 7. Send email notification to user
+            self._send_review_ready_email(user_id, submission_id)
 
             return {
                 "success": True,
@@ -585,6 +649,79 @@ class ReviewService:
                 "success": False,
                 "error": str(e)
             }
+
+    def _send_review_ready_email(self, user_id: str, submission_id: str) -> None:
+        """
+        Send email notification when review is ready
+
+        Args:
+            user_id: Clerk user ID
+            submission_id: Review submission ID
+        """
+        try:
+            # Get user info from Clerk
+            clerk_secret_key = os.getenv("CLERK_SECRET_KEY")
+            if not clerk_secret_key:
+                print("⚠️  CLERK_SECRET_KEY not configured, skipping email")
+                return
+
+            # Fetch user data from Clerk API
+            clerk_api_url = f"https://api.clerk.com/v1/users/{user_id}"
+            headers = {
+                "Authorization": f"Bearer {clerk_secret_key}",
+                "Content-Type": "application/json"
+            }
+
+            response = requests.get(clerk_api_url, headers=headers)
+
+            if response.status_code != 200:
+                print(f"⚠️  Failed to fetch user from Clerk: {response.status_code}")
+                return
+
+            user_data = response.json()
+
+            # Extract user info
+            first_name = user_data.get("first_name", "there")
+            email_addresses = user_data.get("email_addresses", [])
+
+            if not email_addresses:
+                print(f"⚠️  No email address found for user {user_id}")
+                return
+
+            # Get primary email
+            primary_email = None
+            for email_obj in email_addresses:
+                if email_obj.get("id") == user_data.get("primary_email_address_id"):
+                    primary_email = email_obj.get("email_address")
+                    break
+
+            if not primary_email and email_addresses:
+                primary_email = email_addresses[0].get("email_address")
+
+            if not primary_email:
+                print(f"⚠️  No valid email address found for user {user_id}")
+                return
+
+            # Construct review URL
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            review_url = f"{frontend_url}/resume-review"
+
+            # Send email
+            print(f"📧 Sending review ready email to {primary_email}")
+            result = email_service.send_review_ready_email(
+                to_email=primary_email,
+                first_name=first_name,
+                review_url=review_url
+            )
+
+            if result["success"]:
+                print(f"✅ Email sent successfully")
+            else:
+                print(f"⚠️  Failed to send email: {result.get('error')}")
+
+        except Exception as e:
+            # Don't fail the entire operation if email fails
+            print(f"⚠️  Error sending review ready email: {str(e)}")
 
 
 # Global review service instance
