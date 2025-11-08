@@ -33,6 +33,8 @@ class ReviewService:
         """
         Submit a resume for review
 
+        This also adds the resume to the user's library for future reference.
+
         Args:
             user_id: Clerk user ID
             filename: Original filename
@@ -48,11 +50,12 @@ class ReviewService:
             Dictionary with success status, submission_id, and file_url
         """
         try:
-            # Generate unique submission ID
-            submission_id = str(uuid.uuid4())
+            # Generate unique IDs
+            resume_id = str(uuid.uuid4())  # For user_resumes table
+            submission_id = str(uuid.uuid4())  # For review_submissions table
 
-            # Create storage path: {user_id}/{submission_id}.pdf
-            storage_path = f"{user_id}/{submission_id}.pdf"
+            # Create storage path using library structure: {user_id}/{resume_id}/original.pdf
+            storage_path = f"{user_id}/{resume_id}/original.pdf"
 
             # Upload to user-resumes bucket using storage service
             file_url = storage_service.upload_file(
@@ -62,10 +65,25 @@ class ReviewService:
                 content_type="application/pdf"
             )
 
-            # Create database record
+            # 1. First, add to user's resume library
+            resume_data = {
+                "id": resume_id,
+                "user_id": user_id,
+                "filename": filename,
+                "file_url": file_url,
+                "storage_path": storage_path,
+                "file_type": "pdf"
+            }
+            supabase.table("user_resumes").insert(resume_data).execute()
+
+            # 2. Then, create review submission linked to the library resume
+            # Auto-mark as paid if free (no payment required)
+            is_paid = total_price == 0.0
+
             submission_data = {
                 "id": submission_id,
                 "user_id": user_id,
+                "user_resume_id": resume_id,  # Link to user_resumes table
                 "filename": filename,
                 "file_url": file_url,
                 "storage_path": storage_path,
@@ -76,7 +94,8 @@ class ReviewService:
                 "delivery_speed": delivery_speed,
                 "base_price": base_price,
                 "delivery_fee": delivery_fee,
-                "total_price": total_price
+                "total_price": total_price,
+                "paid": is_paid
             }
 
             result = supabase.table("review_submissions").insert(submission_data).execute()
@@ -96,7 +115,13 @@ class ReviewService:
     def submit_resume_by_id(
         self,
         user_id: str,
-        user_resume_id: str
+        user_resume_id: str,
+        review_context: Optional[str] = None,
+        reviewer_type: str = "team",
+        delivery_speed: str = "standard",
+        base_price: float = 0.00,
+        delivery_fee: float = 0.00,
+        total_price: float = 0.00
     ) -> Dict[str, Any]:
         """
         Submit a resume for review using existing user_resume_id
@@ -104,6 +129,12 @@ class ReviewService:
         Args:
             user_id: Clerk user ID
             user_resume_id: ID of resume in user_resumes table
+            review_context: Context for review
+            reviewer_type: Type of reviewer (team, big_tech, startup, technical)
+            delivery_speed: Delivery speed (standard, express)
+            base_price: Base price for reviewer type
+            delivery_fee: Additional fee for express delivery
+            total_price: Total cost
 
         Returns:
             Dictionary with success status, submission_id, and file_url
@@ -128,6 +159,9 @@ class ReviewService:
             # Generate unique submission ID
             submission_id = str(uuid.uuid4())
 
+            # Auto-mark as paid if free (no payment required)
+            is_paid = total_price == 0.0
+
             # Create database record linking to user_resume
             submission_data = {
                 "id": submission_id,
@@ -137,7 +171,14 @@ class ReviewService:
                 "file_url": resume["file_url"],  # Reference original
                 "storage_path": resume["storage_path"],  # Reference original
                 "status": "pending",
-                "submitted_at": datetime.utcnow().isoformat()
+                "submitted_at": datetime.utcnow().isoformat(),
+                "review_context": review_context,
+                "reviewer_type": reviewer_type,
+                "delivery_speed": delivery_speed,
+                "base_price": base_price,
+                "delivery_fee": delivery_fee,
+                "total_price": total_price,
+                "paid": is_paid
             }
 
             result = supabase.table("review_submissions").insert(submission_data).execute()
@@ -166,7 +207,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid")\
+                .select("id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .eq("user_id", user_id)\
                 .order("created_at", desc=True)\
                 .execute()
@@ -194,7 +235,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, user_id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid")\
+                .select("id, user_id, filename, status, file_url, reviewed_file_url, submitted_at, completed_at, paid, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .order("created_at", desc=True)\
                 .execute()
 
@@ -225,7 +266,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id")\
+                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .eq("id", submission_id)\
                 .eq("user_id", user_id)\
                 .single()\
@@ -260,7 +301,7 @@ class ReviewService:
         """
         try:
             result = supabase.table("review_submissions")\
-                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id")\
+                .select("id, user_id, filename, file_url, storage_path, status, reviewed_file_url, notes, created_at, updated_at, submitted_at, completed_at, paid, stripe_session_id, stripe_payment_intent_id, review_context, reviewer_type, delivery_speed, base_price, delivery_fee, total_price")\
                 .eq("id", submission_id)\
                 .single()\
                 .execute()

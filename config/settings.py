@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str
     STRIPE_WEBHOOK_SECRET: str
     STRIPE_PRICE_ID_PRO: str  # Price ID for Pro subscription
-    STRIPE_REVIEW_PRICE_ID: str  # Price ID for Resume Review one-time payment
+
+    # Resume Review Price IDs
+    STRIPE_REVIEW_PRICE_TECHNICAL: str  # Technical reviewer
+    STRIPE_REVIEW_PRICE_STARTUP: str  # Startup reviewer
+    STRIPE_REVIEW_PRICE_BIG_TECH: str  # Big Tech reviewer
+    STRIPE_REVIEW_PRICE_EXPRESS: str  # Express delivery (additive)
 
     # Application
     APP_NAME: str = "Resume Library"

@@ -31,7 +31,8 @@ router = APIRouter()
 
 @router.post("/submit", response_model=SubmitReviewResponse)
 async def submit_resume(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    existing_resume_id: Optional[str] = Form(None),
     review_context: Optional[str] = Form(None),
     reviewer_type: str = Form("team"),
     delivery_speed: str = Form("standard"),
@@ -43,8 +44,13 @@ async def submit_resume(
     """
     Submit a resume for manual review
 
+    Supports two submission methods:
+    1. Upload a new PDF file
+    2. Submit an existing resume from user's library
+
     Args:
-        file: PDF file to submit
+        file: PDF file to submit (required if existing_resume_id not provided)
+        existing_resume_id: ID of existing resume from user_resumes table (required if file not provided)
         review_context: Context for review (target roles, concerns, areas to focus)
         reviewer_type: Type of reviewer (team, big_tech, startup, technical)
         delivery_speed: Delivery speed (standard, express)
@@ -57,9 +63,12 @@ async def submit_resume(
         SubmitReviewResponse with submission ID and file URL
     """
     try:
-        # Validate PDF
-        if not file.filename.lower().endswith('.pdf'):
-            raise HTTPException(400, "Only PDF files are supported")
+        # Validate that exactly one submission method is provided
+        if file is None and existing_resume_id is None:
+            raise HTTPException(400, "Either 'file' or 'existing_resume_id' must be provided")
+
+        if file is not None and existing_resume_id is not None:
+            raise HTTPException(400, "Cannot provide both 'file' and 'existing_resume_id'. Choose one submission method.")
 
         # Validate reviewer_type
         if reviewer_type not in ["team", "big_tech", "startup", "technical"]:
@@ -69,28 +78,55 @@ async def submit_resume(
         if delivery_speed not in ["standard", "express"]:
             raise HTTPException(400, "Invalid delivery_speed")
 
-        # Read file content
-        file_content = await file.read()
+        # Handle file upload submission
+        if file is not None:
+            # Validate PDF
+            if not file.filename.lower().endswith('.pdf'):
+                raise HTTPException(400, "Only PDF files are supported")
 
-        print(f"📄 Submitting resume for review:")
-        print(f"   File: {file.filename}")
-        print(f"   User ID: {user_id}")
-        print(f"   Reviewer Type: {reviewer_type}")
-        print(f"   Delivery Speed: {delivery_speed}")
-        print(f"   Total Price: ${total_price}")
+            # Read file content
+            file_content = await file.read()
 
-        # Submit resume
-        result = review_service.submit_resume(
-            user_id=user_id,
-            filename=file.filename,
-            file_content=file_content,
-            review_context=review_context,
-            reviewer_type=reviewer_type,
-            delivery_speed=delivery_speed,
-            base_price=base_price,
-            delivery_fee=delivery_fee,
-            total_price=total_price
-        )
+            print(f"📄 Submitting new resume file for review:")
+            print(f"   File: {file.filename}")
+            print(f"   User ID: {user_id}")
+            print(f"   Reviewer Type: {reviewer_type}")
+            print(f"   Delivery Speed: {delivery_speed}")
+            print(f"   Total Price: ${total_price}")
+
+            # Submit resume
+            result = review_service.submit_resume(
+                user_id=user_id,
+                filename=file.filename,
+                file_content=file_content,
+                review_context=review_context,
+                reviewer_type=reviewer_type,
+                delivery_speed=delivery_speed,
+                base_price=base_price,
+                delivery_fee=delivery_fee,
+                total_price=total_price
+            )
+
+        # Handle existing resume submission
+        else:
+            print(f"📄 Submitting existing resume for review:")
+            print(f"   Resume ID: {existing_resume_id}")
+            print(f"   User ID: {user_id}")
+            print(f"   Reviewer Type: {reviewer_type}")
+            print(f"   Delivery Speed: {delivery_speed}")
+            print(f"   Total Price: ${total_price}")
+
+            # Submit resume by ID
+            result = review_service.submit_resume_by_id(
+                user_id=user_id,
+                user_resume_id=existing_resume_id,
+                review_context=review_context,
+                reviewer_type=reviewer_type,
+                delivery_speed=delivery_speed,
+                base_price=base_price,
+                delivery_fee=delivery_fee,
+                total_price=total_price
+            )
 
         if not result["success"]:
             print(f"❌ Submission failed: {result.get('error')}")

@@ -6,8 +6,14 @@ from pydantic import BaseModel, Field
 
 
 class SubmitReviewRequest(BaseModel):
-    """Request to submit a resume for review"""
-    filename: str = Field(..., description="Original filename")
+    """Request to submit a resume for review
+
+    Supports two submission methods:
+    1. Upload a new file (provide filename/file)
+    2. Submit existing resume from library (provide existing_resume_id)
+    """
+    filename: Optional[str] = Field(None, description="Original filename (for new file uploads)")
+    existing_resume_id: Optional[str] = Field(None, description="ID of existing resume from user_resumes table")
     review_context: Optional[str] = Field(None, description="Context for review: target roles, concerns, areas to focus on")
     reviewer_type: Literal["team", "big_tech", "startup", "technical"] = Field("team", description="Type of reviewer")
     delivery_speed: Literal["standard", "express"] = Field("standard", description="Delivery speed")
@@ -36,6 +42,12 @@ class ReviewSubmissionSummary(BaseModel):
     submitted_at: str = Field(..., description="ISO timestamp of submission")
     completed_at: Optional[str] = Field(None, description="ISO timestamp of completion")
     paid: bool = Field(False, description="Whether user has paid to view the review")
+    review_context: Optional[str] = Field(None, description="Context for review: target roles, concerns")
+    reviewer_type: Optional[str] = Field(None, description="Type of reviewer: team, big_tech, startup, technical")
+    delivery_speed: Optional[str] = Field(None, description="Delivery speed: standard, express")
+    base_price: Optional[float] = Field(None, description="Base price for reviewer type")
+    delivery_fee: Optional[float] = Field(None, description="Additional fee for express delivery")
+    total_price: Optional[float] = Field(None, description="Total cost")
 
 
 class ListReviewSubmissionsResponse(BaseModel):
@@ -62,6 +74,12 @@ class SubmissionDetail(BaseModel):
     paid: bool = Field(False, description="Whether user has paid to view the review")
     stripe_session_id: Optional[str] = Field(None, description="Stripe checkout session ID")
     stripe_payment_intent_id: Optional[str] = Field(None, description="Stripe payment intent ID")
+    review_context: Optional[str] = Field(None, description="Context for review: target roles, concerns")
+    reviewer_type: Optional[str] = Field(None, description="Type of reviewer: team, big_tech, startup, technical")
+    delivery_speed: Optional[str] = Field(None, description="Delivery speed: standard, express")
+    base_price: Optional[float] = Field(None, description="Base price for reviewer type")
+    delivery_fee: Optional[float] = Field(None, description="Additional fee for express delivery")
+    total_price: Optional[float] = Field(None, description="Total cost")
 
 
 class GetSubmissionResponse(BaseModel):
