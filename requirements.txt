@@ -76,3 +76,4 @@ uvicorn==0.38.0
 websockets==15.0.1
 wrapt==1.17.3
 yarl==1.22.0
+resend==2.6.0

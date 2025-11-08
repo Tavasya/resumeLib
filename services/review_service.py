@@ -3,10 +3,12 @@ Service for managing resume review submissions
 """
 import uuid
 import requests
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 from config import supabase
 from services.pdf_service import pdf_service
+from services.email_service import email_service
 
 
 class ReviewService:
@@ -291,6 +293,9 @@ class ReviewService:
                 .eq("id", submission_id)\
                 .execute()
 
+            # 7. Send email notification to user
+            self._send_review_ready_email(user_id, submission_id)
+
             return {
                 "success": True,
                 "reviewed_file_url": reviewed_file_url
@@ -508,6 +513,79 @@ class ReviewService:
                 "success": False,
                 "error": str(e)
             }
+
+    def _send_review_ready_email(self, user_id: str, submission_id: str) -> None:
+        """
+        Send email notification when review is ready
+
+        Args:
+            user_id: Clerk user ID
+            submission_id: Review submission ID
+        """
+        try:
+            # Get user info from Clerk
+            clerk_secret_key = os.getenv("CLERK_SECRET_KEY")
+            if not clerk_secret_key:
+                print("⚠️  CLERK_SECRET_KEY not configured, skipping email")
+                return
+
+            # Fetch user data from Clerk API
+            clerk_api_url = f"https://api.clerk.com/v1/users/{user_id}"
+            headers = {
+                "Authorization": f"Bearer {clerk_secret_key}",
+                "Content-Type": "application/json"
+            }
+
+            response = requests.get(clerk_api_url, headers=headers)
+
+            if response.status_code != 200:
+                print(f"⚠️  Failed to fetch user from Clerk: {response.status_code}")
+                return
+
+            user_data = response.json()
+
+            # Extract user info
+            first_name = user_data.get("first_name", "there")
+            email_addresses = user_data.get("email_addresses", [])
+
+            if not email_addresses:
+                print(f"⚠️  No email address found for user {user_id}")
+                return
+
+            # Get primary email
+            primary_email = None
+            for email_obj in email_addresses:
+                if email_obj.get("id") == user_data.get("primary_email_address_id"):
+                    primary_email = email_obj.get("email_address")
+                    break
+
+            if not primary_email and email_addresses:
+                primary_email = email_addresses[0].get("email_address")
+
+            if not primary_email:
+                print(f"⚠️  No valid email address found for user {user_id}")
+                return
+
+            # Construct review URL
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            review_url = f"{frontend_url}/review"
+
+            # Send email
+            print(f"📧 Sending review ready email to {primary_email}")
+            result = email_service.send_review_ready_email(
+                to_email=primary_email,
+                first_name=first_name,
+                review_url=review_url
+            )
+
+            if result["success"]:
+                print(f"✅ Email sent successfully")
+            else:
+                print(f"⚠️  Failed to send email: {result.get('error')}")
+
+        except Exception as e:
+            # Don't fail the entire operation if email fails
+            print(f"⚠️  Error sending review ready email: {str(e)}")
 
 
 # Global review service instance
