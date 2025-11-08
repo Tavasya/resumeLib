@@ -586,7 +586,7 @@ class ReviewService:
 
             # Construct review URL
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-            review_url = f"{frontend_url}/review"
+            review_url = f"{frontend_url}/resume-review"
 
             # Send email
             print(f"📧 Sending review ready email to {primary_email}")
