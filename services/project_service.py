@@ -2,7 +2,7 @@
 Project service for Supabase operations
 Handles operations for extracting projects from resumes
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from config import supabase
 
 
@@ -87,6 +87,116 @@ class ProjectService:
 
         except Exception as e:
             print(f"ERROR in get_projects_with_links: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "projects": [],
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": 0,
+                    "total_pages": 0
+                },
+                "error": str(e)
+            }
+
+    def search_projects(
+        self,
+        query: Optional[str] = None,
+        technologies: Optional[List[str]] = None,
+        page: int = 1,
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Search projects with filters
+
+        Args:
+            query: Search query (searches project name and description)
+            technologies: List of technologies to filter by
+            page: Page number (starts at 1)
+            limit: Number of projects per page
+
+        Returns:
+            Dictionary with projects and pagination info
+        """
+        try:
+            # Get all resumes
+            response = supabase.table(self.table).select("*").execute()
+
+            if not response.data:
+                return {
+                    "projects": [],
+                    "pagination": {
+                        "page": page,
+                        "limit": limit,
+                        "total": 0,
+                        "total_pages": 0
+                    }
+                }
+
+            all_projects = []
+
+            for resume in response.data:
+                projects = resume.get("projects", [])
+
+                if not projects:
+                    continue
+
+                for project in projects:
+                    if not isinstance(project, dict):
+                        continue
+
+                    # Extract project data
+                    project_name = project.get("name") or ""
+                    project_description = project.get("description") or ""
+                    project_technologies = project.get("technologies") or []
+                    project_url = (project.get("url") or "").strip()
+
+                    # Apply filters
+                    matches = True
+
+                    # Query filter - search in name and description
+                    if query:
+                        query_lower = query.lower()
+                        if query_lower not in project_name.lower() and query_lower not in project_description.lower():
+                            matches = False
+
+                    # Technologies filter - check if any requested technology is in project
+                    if technologies and matches:
+                        project_techs_lower = [t.lower() for t in project_technologies]
+                        has_tech = any(tech.lower() in project_techs_lower for tech in technologies)
+                        if not has_tech:
+                            matches = False
+
+                    if matches:
+                        all_projects.append({
+                            "project_name": project_name,
+                            "project_url": project_url if project_url else None,
+                            "project_description": project_description,
+                            "project_technologies": project_technologies,
+                            "owner_id": resume.get("id"),
+                            "owner_name": resume.get("name"),
+                            "owner_email": resume.get("email"),
+                            "owner_title": resume.get("title")
+                        })
+
+            # Apply pagination
+            total = len(all_projects)
+            offset = (page - 1) * limit
+            paginated_projects = all_projects[offset:offset + limit]
+
+            return {
+                "projects": paginated_projects,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "total_pages": (total + limit - 1) // limit if total > 0 else 0
+                }
+            }
+
+        except Exception as e:
+            print(f"ERROR in search_projects: {e}")
             import traceback
             traceback.print_exc()
             return {
