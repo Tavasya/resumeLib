@@ -32,6 +32,11 @@ class SaveBuilderContentResponse(BaseModel):
     error: Optional[str] = None
 
 
+class GeneratePDFRequest(BaseModel):
+    """Request to generate PDF from HTML"""
+    html: str = Field(..., description="Complete HTML document with styling")
+
+
 class GeneratePDFResponse(BaseModel):
     """Response for PDF generation"""
     success: bool

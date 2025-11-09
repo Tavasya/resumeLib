@@ -11,6 +11,7 @@ from models.resume_builder import (
     CreateBuilderResumeResponse,
     SaveBuilderContentRequest,
     SaveBuilderContentResponse,
+    GeneratePDFRequest,
     GeneratePDFResponse,
     GetBuilderContentResponse,
     DeleteBuilderResumeResponse
@@ -110,15 +111,18 @@ async def save_builder_content(
 @router.post("/{resume_id}/generate-pdf", response_model=GeneratePDFResponse)
 async def generate_pdf(
     resume_id: str,
+    request: GeneratePDFRequest,
     user_id: str = Depends(get_user_id)
 ):
     """
-    Generate PDF from saved builder content
+    Generate PDF from HTML provided by frontend
 
-    Parses the Editor.js blocks and generates a formatted PDF resume
+    Frontend renders Editor.js blocks to styled HTML.
+    Backend just converts HTML to PDF using WeasyPrint.
 
     Args:
         resume_id: UUID of the resume
+        request: GeneratePDFRequest with complete HTML
         user_id: Authenticated user ID from Clerk JWT
 
     Returns:
@@ -127,7 +131,8 @@ async def generate_pdf(
     try:
         result = resume_builder_service.generate_pdf(
             resume_id=resume_id,
-            user_id=user_id
+            user_id=user_id,
+            html=request.html
         )
 
         if not result["success"]:
