@@ -128,21 +128,22 @@ class ResumeBuilderService:
                 "error": str(e)
             }
 
-    def generate_pdf(self, resume_id: str, user_id: str) -> Dict[str, Any]:
+    def generate_pdf(self, resume_id: str, user_id: str, html: str) -> Dict[str, Any]:
         """
-        Generate PDF from saved Editor.js content
+        Generate PDF from HTML provided by frontend
 
         Args:
             resume_id: UUID of resume
             user_id: Clerk user ID
+            html: Complete HTML document with styling (from frontend)
 
         Returns:
             Dictionary with success status and file_url
         """
         try:
-            # Get resume with builder content
+            # Verify resume belongs to user
             result = supabase.table("user_resumes")\
-                .select("id, builder_content, filename")\
+                .select("id, filename")\
                 .eq("id", resume_id)\
                 .eq("user_id", user_id)\
                 .eq("resume_source", "builder")\
@@ -155,20 +156,8 @@ class ResumeBuilderService:
                     "error": "Resume not found or access denied"
                 }
 
-            resume = result.data
-            editor_data = resume.get("builder_content")
-
-            if not editor_data:
-                return {
-                    "success": False,
-                    "error": "No content to generate PDF from. Please save content first."
-                }
-
-            # Parse Editor.js blocks to HTML
-            html_content = self._convert_blocks_to_html(editor_data.get("blocks", []))
-
-            # Generate PDF using WeasyPrint
-            pdf_bytes = self._generate_pdf_from_html(html_content)
+            # Generate PDF from HTML (frontend controls all styling)
+            pdf_bytes = self._generate_pdf_from_html(html)
 
             # Upload to storage
             storage_path = f"{user_id}/{resume_id}/original.pdf"
@@ -299,133 +288,22 @@ class ResumeBuilderService:
                 "error": str(e)
             }
 
-    def _convert_blocks_to_html(self, blocks: list) -> str:
+    def _generate_pdf_from_html(self, html: str) -> bytes:
         """
-        Convert Editor.js blocks to HTML
+        Generate PDF from complete HTML document using WeasyPrint
+
+        Frontend provides complete HTML with all styling.
+        Backend just does the conversion.
 
         Args:
-            blocks: List of Editor.js blocks
-
-        Returns:
-            HTML string
-        """
-        html_parts = []
-
-        for block in blocks:
-            block_type = block.get("type")
-            data = block.get("data", {})
-
-            if block_type == "header":
-                level = data.get("level", 2)
-                text = data.get("text", "")
-                html_parts.append(f'<h{level}>{text}</h{level}>')
-
-            elif block_type == "paragraph":
-                text = data.get("text", "")
-                # Replace &nbsp; with spaces for cleaner PDF
-                text = text.replace("&nbsp;", " ")
-                html_parts.append(f'<p>{text}</p>')
-
-            elif block_type == "list":
-                style = data.get("style", "unordered")
-                items = data.get("items", [])
-                tag = "ul" if style == "unordered" else "ol"
-
-                list_html = f'<{tag}>'
-                for item in items:
-                    content = item.get("content", "") if isinstance(item, dict) else item
-                    list_html += f'<li>{content}</li>'
-                list_html += f'</{tag}>'
-
-                html_parts.append(list_html)
-
-            elif block_type == "delimiter":
-                # Horizontal line separator
-                html_parts.append('<hr>')
-
-        return "\n".join(html_parts)
-
-    def _generate_pdf_from_html(self, html_content: str) -> bytes:
-        """
-        Generate PDF from HTML using WeasyPrint
-
-        Args:
-            html_content: HTML string
+            html: Complete HTML document with styling
 
         Returns:
             PDF bytes
         """
-        # Create a styled HTML document
-        full_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                @page {{
-                    size: Letter;
-                    margin: 1in;
-                }}
-
-                body {{
-                    font-family: 'Helvetica', 'Arial', sans-serif;
-                    font-size: 11pt;
-                    line-height: 1.5;
-                    color: #000;
-                }}
-
-                h1 {{
-                    font-size: 24pt;
-                    font-weight: bold;
-                    margin: 0 0 8pt 0;
-                    text-align: center;
-                }}
-
-                h2 {{
-                    font-size: 14pt;
-                    font-weight: bold;
-                    margin: 16pt 0 8pt 0;
-                    border-bottom: 1px solid #000;
-                    padding-bottom: 4pt;
-                }}
-
-                h3 {{
-                    font-size: 12pt;
-                    font-weight: bold;
-                    margin: 12pt 0 6pt 0;
-                }}
-
-                p {{
-                    margin: 4pt 0;
-                }}
-
-                ul, ol {{
-                    margin: 4pt 0;
-                    padding-left: 20pt;
-                }}
-
-                li {{
-                    margin: 2pt 0;
-                }}
-
-                b, strong {{
-                    font-weight: bold;
-                }}
-
-                i, em {{
-                    font-style: italic;
-                }}
-            </style>
-        </head>
-        <body>
-            {html_content}
-        </body>
-        </html>
-        """
-
-        # Generate PDF
+        # Generate PDF from complete HTML (no styling needed - frontend handles it)
         pdf_file = BytesIO()
-        HTML(string=full_html).write_pdf(pdf_file)
+        HTML(string=html).write_pdf(pdf_file)
         return pdf_file.getvalue()
 
 
