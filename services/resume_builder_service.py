@@ -199,11 +199,11 @@ class ResumeBuilderService:
             user_id: Clerk user ID
 
         Returns:
-            Dictionary with success status and editor_data
+            Dictionary with success status and builder_content
         """
         try:
             result = supabase.table("user_resumes")\
-                .select("id, filename, builder_content, file_url")\
+                .select("id, user_id, filename, builder_content, file_url, created_at, updated_at")\
                 .eq("id", resume_id)\
                 .eq("user_id", user_id)\
                 .eq("resume_source", "builder")\
@@ -216,14 +216,18 @@ class ResumeBuilderService:
                     "error": "Resume not found or access denied"
                 }
 
-            resume = result.data
+            resume_data = result.data
 
             return {
                 "success": True,
-                "resume_id": resume_id,
-                "title": resume.get("filename"),
-                "editor_data": resume.get("builder_content"),
-                "file_url": resume.get("file_url")
+                "resume": {
+                    "id": resume_data.get("id"),
+                    "user_id": resume_data.get("user_id"),
+                    "title": resume_data.get("filename"),
+                    "builder_content": resume_data.get("builder_content"),
+                    "created_at": resume_data.get("created_at"),
+                    "updated_at": resume_data.get("updated_at")
+                }
             }
 
         except Exception as e:

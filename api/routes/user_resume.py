@@ -77,7 +77,8 @@ async def upload_user_resume(
             "filename": file.filename,
             "file_url": file_url,
             "storage_path": storage_path,
-            "file_type": file_type
+            "file_type": file_type,
+            "resume_source": "upload"  # Mark as uploaded resume
         }).execute()
 
         return UploadResponse(
@@ -116,7 +117,7 @@ async def list_user_resumes(
     try:
         # Get all resumes for this user
         result = supabase.table("user_resumes")\
-            .select("id, filename, file_url, file_type, created_at, updated_at")\
+            .select("id, filename, file_url, file_type, resume_source, builder_content, created_at, updated_at")\
             .eq("user_id", user_id)\
             .order("created_at", desc=True)\
             .execute()
