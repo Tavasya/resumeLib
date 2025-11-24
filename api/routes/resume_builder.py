@@ -154,7 +154,7 @@ async def generate_pdf(
         )
 
 
-@router.get("/{resume_id}", response_model=GetBuilderContentResponse)
+@router.get("/{resume_id}")
 async def get_builder_content(
     resume_id: str,
     user_id: str = Depends(get_user_id)
@@ -169,7 +169,7 @@ async def get_builder_content(
         user_id: Authenticated user ID from Clerk JWT
 
     Returns:
-        GetBuilderContentResponse with editor_data
+        Response with resume object containing builder_content
     """
     try:
         result = resume_builder_service.get_builder_content(
@@ -180,22 +180,17 @@ async def get_builder_content(
         if not result["success"]:
             raise HTTPException(404, result.get("error", "Resume not found"))
 
-        return GetBuilderContentResponse(
-            success=True,
-            resume_id=result["resume_id"],
-            title=result["title"],
-            editor_data=result["editor_data"],
-            file_url=result.get("file_url")
-        )
+        # Return the result directly - it already has the correct structure
+        return result
 
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error getting builder content: {e}")
-        return GetBuilderContentResponse(
-            success=False,
-            error=str(e)
-        )
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 @router.delete("/{resume_id}", response_model=DeleteBuilderResumeResponse)

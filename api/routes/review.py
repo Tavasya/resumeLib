@@ -28,6 +28,13 @@ from models.review import (
 
 router = APIRouter()
 
+# Admin user IDs - centralized configuration
+ADMIN_USER_IDS = [
+    "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
+    "user_34N6arMDMuOBtMo1OivYVsc1VuP",
+    "user_35iO7SzGdZGdaLqfOa2gMghtZcS"
+]
+
 
 @router.post("/submit", response_model=SubmitReviewResponse)
 async def submit_resume(
@@ -201,10 +208,6 @@ async def list_all_submissions(
         ListReviewSubmissionsResponse with list of all submissions
     """
     # Check if user is admin
-    ADMIN_USER_IDS = [
-        "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
-        "user_34N6arMDMuOBtMo1OivYVsc1VuP"
-    ]
     print(f"🔐 Admin endpoint accessed by user_id: {user_id}")
     print(f"🔑 Expected admin user_ids: {ADMIN_USER_IDS}")
     print(f"✅ Match: {user_id in ADMIN_USER_IDS}")
@@ -291,11 +294,6 @@ async def get_submission_admin(
         GetSubmissionResponse with submission details
     """
     # Check if user is admin
-    ADMIN_USER_IDS = [
-        "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
-        "user_34N6arMDMuOBtMo1OivYVsc1VuP"
-    ]
-
     if user_id not in ADMIN_USER_IDS:
         raise HTTPException(403, "Access denied. Admin privileges required.")
 
@@ -525,11 +523,6 @@ async def get_annotations_admin(
         GetAnnotationsResponse with list of annotations
     """
     # Check if user is admin
-    ADMIN_USER_IDS = [
-        "user_34xiVcXmTBuDQJIJtqOpl5i2K9W",
-        "user_34N6arMDMuOBtMo1OivYVsc1VuP"
-    ]
-
     if user_id not in ADMIN_USER_IDS:
         raise HTTPException(403, "Access denied. Admin privileges required.")
 

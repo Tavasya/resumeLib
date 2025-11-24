@@ -74,34 +74,8 @@ class PDFService:
                     # Draw red rectangle (could be extended for other shapes)
                     page.draw_rect(rect, color=(1, 0, 0), width=2)
 
-                # Add comment text if present
-                comment = content.get("comment", "").strip()
-                if comment:
-                    # Position comment above the annotation
-                    comment_rect = fitz.Rect(
-                        rect.x0,
-                        rect.y0 - 30,  # 30 points above
-                        rect.x0 + 400,  # Max width for comment
-                        rect.y0 - 5     # 5 points above annotation
-                    )
-
-                    # Draw semi-transparent yellow background for comment
-                    page.draw_rect(
-                        comment_rect,
-                        color=(1, 1, 0.8),  # Light yellow
-                        fill=(1, 1, 0.8),   # Fill with light yellow
-                        width=0.5
-                    )
-
-                    # Insert comment text
-                    page.insert_textbox(
-                        comment_rect,
-                        f"💬 {comment}",
-                        fontsize=9,
-                        fontname="helv",
-                        color=(0, 0, 0),  # Black text
-                        align=0  # Left align
-                    )
+                # Comment text is stored in database and displayed as overlay in frontend
+                # No need to burn it into the PDF - keeps the PDF clean
 
             # Add watermark to all pages
             self._add_watermark(doc, watermark_text)

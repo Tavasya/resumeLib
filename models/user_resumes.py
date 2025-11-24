@@ -20,6 +20,8 @@ class UserResumeItem(BaseModel):
     filename: str
     file_url: Optional[str] = None
     file_type: str
+    resume_source: Optional[str] = None
+    builder_content: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 
