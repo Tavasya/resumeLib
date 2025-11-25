@@ -8,7 +8,15 @@ import uuid
 
 from api.auth import get_user_id
 from services.storage_service import storage_service
-from models.user_resumes import UploadResponse, ListResumesResponse, UserResumeItem
+from services.user_resume_service import user_resume_service
+from models.user_resumes import (
+    UploadResponse,
+    ListResumesResponse,
+    UserResumeItem,
+    RenameResumeRequest,
+    RenameResumeResponse,
+    DeleteResumeResponse
+)
 from config import supabase
 
 router = APIRouter()
@@ -135,6 +143,94 @@ async def list_user_resumes(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list resumes: {str(e)}"
+        )
+
+
+@router.delete("/{resume_id}", response_model=DeleteResumeResponse)
+async def delete_user_resume(
+    resume_id: str,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Delete a user resume (works for both uploaded and builder resumes)
+
+    Deletes the resume file from storage and removes the database record.
+
+    Args:
+        resume_id: UUID of the resume to delete
+        user_id: User ID from Clerk JWT (injected by dependency)
+
+    Returns:
+        DeleteResumeResponse with success status
+    """
+    try:
+        result = user_resume_service.delete_resume(resume_id, user_id)
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result.get("error", "Failed to delete resume")
+            )
+
+        return DeleteResumeResponse(
+            success=True,
+            message=result.get("message", "Resume deleted successfully")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting resume: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete resume: {str(e)}"
+        )
+
+
+@router.patch("/{resume_id}", response_model=RenameResumeResponse)
+async def rename_user_resume(
+    resume_id: str,
+    request: RenameResumeRequest,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Rename a user resume (update filename)
+
+    Updates the filename field in the database.
+
+    Args:
+        resume_id: UUID of the resume to rename
+        request: Request body with new filename
+        user_id: User ID from Clerk JWT (injected by dependency)
+
+    Returns:
+        RenameResumeResponse with success status and new filename
+    """
+    try:
+        result = user_resume_service.rename_resume(
+            resume_id, user_id, request.filename
+        )
+
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result.get("error", "Failed to rename resume")
+            )
+
+        return RenameResumeResponse(
+            success=True,
+            message=result.get("message", "Resume renamed successfully"),
+            resume_id=result.get("resume_id"),
+            filename=result.get("filename")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error renaming resume: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to rename resume: {str(e)}"
         )
 
 
