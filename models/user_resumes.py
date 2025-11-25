@@ -30,3 +30,22 @@ class ListResumesResponse(BaseModel):
     """Response for listing user resumes"""
     success: bool
     resumes: List[UserResumeItem]
+
+
+class RenameResumeRequest(BaseModel):
+    """Request for renaming a resume"""
+    filename: str
+
+
+class RenameResumeResponse(BaseModel):
+    """Response for rename operation"""
+    success: bool
+    message: str
+    resume_id: Optional[str] = None
+    filename: Optional[str] = None
+
+
+class DeleteResumeResponse(BaseModel):
+    """Response for delete operation"""
+    success: bool
+    message: str
