@@ -19,15 +19,22 @@ router = APIRouter()
 async def analyze_resume(
     file: Optional[UploadFile] = File(None),
     existing_submission_id: Optional[str] = Form(None),
+    existing_resume_id: Optional[str] = Form(None),
     job_description: Optional[str] = Form(None),
     user_id: str = Depends(get_user_id)
 ):
     """
     Analyze resume for ATS compatibility
 
+    Supports three input methods:
+    1. Upload a new PDF file
+    2. Use an existing review submission (from review_submissions table)
+    3. Use an existing resume (from user_resumes table - supports builder resumes!)
+
     Args:
         file: Optional PDF resume file (if uploading new)
         existing_submission_id: Optional ID of existing review submission
+        existing_resume_id: Optional ID of existing resume from user_resumes (supports builder resumes)
         job_description: Optional job description to compare against
         user_id: Authenticated user ID from Clerk JWT
 
@@ -37,8 +44,20 @@ async def analyze_resume(
     try:
         resume_text = None
 
-        # Option 1: Use existing submission
-        if existing_submission_id:
+        # Option 1: Use existing resume from user_resumes (supports builder resumes!)
+        if existing_resume_id:
+            print(f"📄 Using existing resume from user_resumes: {existing_resume_id}")
+
+            # Fetch and extract text from resume
+            result = ats_service.get_resume_text_from_user_resume(existing_resume_id, user_id)
+
+            if not result["success"]:
+                raise HTTPException(404, result.get("error", "Failed to fetch resume"))
+
+            resume_text = result["resume_text"]
+
+        # Option 2: Use existing submission
+        elif existing_submission_id:
             print(f"📄 Using existing submission: {existing_submission_id}")
 
             # Get submission details
@@ -79,7 +98,7 @@ async def analyze_resume(
                 resume_text += page.extract_text() + "\n"
 
         else:
-            raise HTTPException(400, "Either file or existing_submission_id is required")
+            raise HTTPException(400, "Either file, existing_submission_id, or existing_resume_id is required")
 
         if not resume_text or not resume_text.strip():
             raise HTTPException(400, "Could not extract text from resume PDF")

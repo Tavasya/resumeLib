@@ -14,7 +14,8 @@ class ATSSuggestion(BaseModel):
 
 class ATSAnalyzeRequest(BaseModel):
     """Request to analyze resume for ATS compatibility"""
-    existing_submission_id: Optional[str] = Field(None, description="ID of existing resume submission")
+    existing_submission_id: Optional[str] = Field(None, description="ID of existing resume submission (from review_submissions)")
+    existing_resume_id: Optional[str] = Field(None, description="ID of existing resume (from user_resumes - supports builder resumes)")
     job_description: Optional[str] = Field(None, description="Job description to compare against")
 
 
