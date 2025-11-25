@@ -10,6 +10,7 @@ import io
 from api.auth import get_user_id
 from services.ats_service import ats_service
 from services.review_service import review_service
+from services.tracking_service import tracking_service
 from models.ats import ATSAnalyzeResponse, ATSSuggestion
 
 router = APIRouter()
@@ -123,6 +124,17 @@ async def analyze_resume(
             ATSSuggestion(**suggestion)
             for suggestion in result["suggestions"]
         ]
+
+        # Track usage
+        resume_source = "builder" if existing_resume_id else "submission" if existing_submission_id else "new_file"
+        tracking_service.track_ats_check(
+            user_id=user_id,
+            score=result["score"],
+            resume_source=resume_source,
+            user_resume_id=existing_resume_id,
+            submission_id=existing_submission_id,
+            has_job_description=bool(job_description)
+        )
 
         return ATSAnalyzeResponse(
             success=True,
